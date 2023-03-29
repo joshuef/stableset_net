@@ -1,24 +1,27 @@
 mod log;
 
+use async_trait::async_trait;
 use bincode::de;
-use futures::{select, FutureExt};
-use libp2p::core::muxing::StreamMuxerBox;
-use libp2p::{Swarm, Transport};
-use log::init_node_logging;
-
 use futures::StreamExt;
-use libp2p::kad::record::store::MemoryStore;
-use libp2p::kad::{GetClosestPeersError, Kademlia, KademliaConfig, KademliaEvent, QueryResult};
+use futures::{prelude::*, AsyncWriteExt};
+use futures::{select, FutureExt};
 use libp2p::{
-    development_transport, identity, mdns, quic,
+    identity, quic,
+    kad::{
+        record::store::MemoryStore, GetClosestPeersError, Kademlia, KademliaConfig, KademliaEvent,
+        QueryResult,
+    },
+    mdns, request_response,
     swarm::{NetworkBehaviour, SwarmBuilder, SwarmEvent},
-    PeerId,
+    PeerId, Swarm,
 };
+use log::init_node_logging;
 // use safenode::error::Result;
+use bytes::Bytes;
 use eyre::{Error, Result};
-use std::path::PathBuf;
-use std::{env, time::Duration};
+use std::{env, io, path::PathBuf, time::Duration};
 use xor_name::XorName;
+
 #[macro_use]
 extern crate tracing;
 
@@ -28,6 +31,7 @@ extern crate tracing;
 #[behaviour(out_event = "SafeNetBehaviour")]
 struct MyBehaviour {
     kademlia: Kademlia<MemoryStore>,
+    req_resp: request_response::Behaviour<PingCodec>,
     mdns: mdns::async_io::Behaviour,
 }
 
@@ -35,12 +39,18 @@ impl MyBehaviour {
     fn get_closest_peers_to_xorname(&mut self, addr: XorName) {
         self.kademlia.get_closest_peers(addr.to_vec());
     }
+
+    fn send_to_peer(&mut self, peer: &PeerId, bytes: Bytes) {
+        let ping = Ping(bytes.to_vec());
+        self.req_resp.send_request(peer, ping.clone());
+    }
 }
 
 #[allow(clippy::large_enum_variant)]
 enum SafeNetBehaviour {
     Kademlia(KademliaEvent),
     Mdns(mdns::Event),
+    ReqResp,
 }
 
 impl From<KademliaEvent> for SafeNetBehaviour {
@@ -55,9 +65,16 @@ impl From<mdns::Event> for SafeNetBehaviour {
     }
 }
 
+impl From<request_response::Event<Ping, Pong>> for SafeNetBehaviour {
+    fn from(event: request_response::Event<Ping, Pong>) -> Self {
+        SafeNetBehaviour::ReqResp
+    }
+}
+
 #[derive(Debug)]
 enum SwarmCmd {
-    Search(XorName),
+Search(XorName),
+    Get,
 }
 
 /// Channel to send Cmds to the swarm
@@ -71,6 +88,7 @@ fn run_swarm() -> CmdChannel {
         // Create a random key for ourselves.
         let keypair = identity::Keypair::generate_ed25519();
         let local_peer_id = PeerId::from(keypair.public());
+        info!("My PeerId is {local_peer_id}");
 
         // QUIC configuration
         let quic_config = quic::Config::new(&keypair);
@@ -89,7 +107,17 @@ fn run_swarm() -> CmdChannel {
             let store = MemoryStore::new(local_peer_id);
             let kademlia = Kademlia::new(local_peer_id, store);
             let mdns = mdns::async_io::Behaviour::new(mdns::Config::default(), local_peer_id)?;
-            let behaviour = MyBehaviour { kademlia, mdns };
+
+            let protocols =
+                std::iter::once((PingProtocol(), request_response::ProtocolSupport::Full));
+            let cfg = request_response::Config::default();
+            let req_resp = request_response::Behaviour::new(PingCodec(), protocols, cfg);
+
+            let behaviour = MyBehaviour {
+                kademlia,
+                req_resp,
+                mdns,
+            };
 
             let mut swarm =
                 SwarmBuilder::with_async_std_executor(transport, behaviour, local_peer_id).build();
@@ -109,8 +137,10 @@ fn run_swarm() -> CmdChannel {
             select! {
                 cmd = receiver.recv().fuse() => {
                     debug!("Cmd in: {cmd:?}");
-                    if let Some(SwarmCmd::Search(xor_name)) =  cmd {
-                        swarm.behaviour_mut().get_closest_peers_to_xorname(xor_name);
+                    match cmd {
+                        Some(SwarmCmd::Search(xor_name)) => swarm.behaviour_mut().get_closest_peers(xor_name),
+                        Some(SwarmCmd::Get) => swarm.behaviour_mut().send_to_peer(&PeerId::random(), Bytes::from("hello")),
+                        None => {}
                     }
                 }
 
@@ -187,7 +217,7 @@ fn run_swarm() -> CmdChannel {
                     //         }
                     //     }
                     // }
-                    _ => {}
+                    _ => debug!("Other type of SwarmEvent we are not handling!")
                 }
 
             }
@@ -242,5 +272,87 @@ fn grab_log_dir() -> Option<PathBuf> {
         Some(PathBuf::from(log_dir))
     } else {
         None
+    }
+}
+
+// ***************************************
+
+// Simple Ping-Pong Protocol
+
+#[derive(Debug, Clone)]
+struct PingProtocol();
+#[derive(Clone)]
+struct PingCodec();
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Ping(Vec<u8>);
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Pong(Vec<u8>);
+
+impl request_response::ProtocolName for PingProtocol {
+    fn protocol_name(&self) -> &[u8] {
+        "/ping/1".as_bytes()
+    }
+}
+
+#[async_trait]
+impl request_response::Codec for PingCodec {
+    type Protocol = PingProtocol;
+    type Request = Ping;
+    type Response = Pong;
+
+    async fn read_request<T>(&mut self, _: &PingProtocol, io: &mut T) -> io::Result<Self::Request>
+    where
+        T: AsyncRead + Unpin + Send,
+    {
+        let vec = read_length_prefixed(io, 1024).await?;
+
+        if vec.is_empty() {
+            return Err(io::ErrorKind::UnexpectedEof.into());
+        }
+
+        Ok(Ping(vec))
+    }
+
+    async fn read_response<T>(&mut self, _: &PingProtocol, io: &mut T) -> io::Result<Self::Response>
+    where
+        T: AsyncRead + Unpin + Send,
+    {
+        let vec = read_length_prefixed(io, 1024).await?;
+
+        if vec.is_empty() {
+            return Err(io::ErrorKind::UnexpectedEof.into());
+        }
+
+        Ok(Pong(vec))
+    }
+
+    async fn write_request<T>(
+        &mut self,
+        _: &PingProtocol,
+        io: &mut T,
+        Ping(data): Ping,
+    ) -> io::Result<()>
+    where
+        T: AsyncWrite + Unpin + Send,
+    {
+        write_length_prefixed(io, data).await?;
+        io.close().await?;
+
+        Ok(())
+    }
+
+    async fn write_response<T>(
+        &mut self,
+        _: &PingProtocol,
+        io: &mut T,
+        Pong(data): Pong,
+    ) -> io::Result<()>
+    where
+        T: AsyncWrite + Unpin + Send,
+    {
+        write_length_prefixed(io, data).await?;
+        io.close().await?;
+
+        Ok(())
     }
 }
