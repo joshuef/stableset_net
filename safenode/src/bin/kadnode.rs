@@ -6,14 +6,16 @@ use futures::StreamExt;
 use futures::{prelude::*, AsyncWriteExt};
 use futures::{select, FutureExt};
 use libp2p::{
-    identity, quic,
+    core::muxing::StreamMuxerBox,
+    core::upgrade::{read_length_prefixed, read_varint, write_length_prefixed, write_varint},
+    identity,
     kad::{
         record::store::MemoryStore, GetClosestPeersError, Kademlia, KademliaConfig, KademliaEvent,
         QueryResult,
     },
-    mdns, request_response,
+    mdns, quic, request_response,
     swarm::{NetworkBehaviour, SwarmBuilder, SwarmEvent},
-    PeerId, Swarm,
+    PeerId, Swarm, Transport,
 };
 use log::init_node_logging;
 // use safenode::error::Result;
@@ -73,7 +75,7 @@ impl From<request_response::Event<Ping, Pong>> for SafeNetBehaviour {
 
 #[derive(Debug)]
 enum SwarmCmd {
-Search(XorName),
+    Search(XorName),
     Get,
 }
 
@@ -138,7 +140,7 @@ fn run_swarm() -> CmdChannel {
                 cmd = receiver.recv().fuse() => {
                     debug!("Cmd in: {cmd:?}");
                     match cmd {
-                        Some(SwarmCmd::Search(xor_name)) => swarm.behaviour_mut().get_closest_peers(xor_name),
+                        Some(SwarmCmd::Search(xor_name)) => swarm.behaviour_mut().get_closest_peers_to_xorname(xor_name),
                         Some(SwarmCmd::Get) => swarm.behaviour_mut().send_to_peer(&PeerId::random(), Bytes::from("hello")),
                         None => {}
                     }
