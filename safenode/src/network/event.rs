@@ -167,6 +167,9 @@ impl SwarmDriver {
                 KademliaEvent::InboundRequest { request } => {
                     info!("got inbound request: {request:?}");
                 }
+                KademliaEvent::UnroutablePeer { peer, .. } => {
+                    info!("Peer {peer:?} is unroutable... what to do!?");
+                }
                 todo => {
                     error!("KademliaEvent has not been implemented: {todo:?}");
                 }
@@ -218,6 +221,9 @@ impl SwarmDriver {
                 } else if endpoint.is_relayed() {
                     info!("Connected with {peer_id:?} and the connection was relayed to us");
                     //todo: try a dial back, and if the dial succeeded, we then can add peer into RT.
+                }
+                else {
+                    debug!("ANOTHER SITUATIONNNNNN");
                 }
             }
             SwarmEvent::ConnectionClosed {
