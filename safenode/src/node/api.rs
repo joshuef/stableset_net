@@ -23,6 +23,7 @@ use crate::{
             SpendQuery,
         },
         storage::{registers::User, DbcAddress},
+        NetworkAddress,
     },
 };
 
@@ -135,6 +136,13 @@ impl Node {
             }
             NetworkEvent::PeerAdded(peer_id) => {
                 debug!("PeerAdded: {peer_id}");
+                if let Ok(closest) = self
+                    .network
+                    .node_get_closest_peers(&NetworkAddress::from_peer(self.network.peer_id))
+                    .await
+                {
+                    debug!("Network finding our closest nodes after new peer returned {closest:?}");
+                }
 
                 self.events_channel.broadcast(NodeEvent::ConnectedToNetwork);
             }

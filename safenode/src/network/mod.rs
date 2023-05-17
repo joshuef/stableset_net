@@ -146,7 +146,7 @@ impl SwarmDriver {
             // this is a heavier operation than publication, so it is done less frequently
             .set_replication_interval(Some(REPLICATION_INTERVAL))
             // how often a node will publish a record key, aka telling the others it exists
-            // this is in addition the replication interval. 
+            // this is in addition the replication interval.
             // as records dont expire, we don't really have a 'publisher' who should republish
             // and so this is set to Nome
             .set_publication_interval(None)
