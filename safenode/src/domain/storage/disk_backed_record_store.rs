@@ -6,8 +6,6 @@
 // KIND, either express or implied. Please review the Licences for the specific language governing
 // permissions and limitations relating to use of the SAFE Network Software.
 
-use crate::network::CLOSE_GROUP_SIZE;
-
 use libp2p::{
     identity::PeerId,
     kad::{
@@ -26,7 +24,7 @@ use std::{
 };
 
 // Control the random replication factor, which means `one in x` copies got replicated each time.
-const RANDOM_REPLICATION_FACTOR: usize = CLOSE_GROUP_SIZE / 2;
+const RANDOM_REPLICATION_FACTOR: usize = 2;
 
 pub(crate) const REPLICATION_INTERVAL: Duration = Duration::from_secs(20);
 

@@ -40,7 +40,7 @@ use libp2p::mdns;
 use libp2p::{
     core::muxing::StreamMuxerBox,
     identity,
-    kad::{Kademlia, KademliaConfig, QueryId, Record, RecordKey},
+    kad::{Kademlia, KademliaConfig, QueryId, Record, RecordKey, RecordReplicationStrategy},
     multiaddr::Protocol,
     request_response::{self, Config as RequestResponseConfig, ProtocolSupport, RequestId},
     swarm::{Swarm, SwarmBuilder},
@@ -234,7 +234,6 @@ impl SwarmDriver {
             std::fs::create_dir_all(&storage_dir)?;
             let store_cfg = DiskBackedRecordStoreConfig {
                 max_value_bytes: 1024 * 1024,
-                max_records: 100,
                 storage_dir,
                 ..Default::default()
             };
@@ -243,6 +242,7 @@ impl SwarmDriver {
                 peer_id,
                 DiskBackedRecordStore::with_config(peer_id, store_cfg),
                 kad_cfg,
+                Some(RecordReplicationStrategy::All),
             )
         };
 
