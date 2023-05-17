@@ -146,7 +146,10 @@ impl SwarmDriver {
             // this is a heavier operation than publication, so it is done less frequently
             .set_replication_interval(Some(REPLICATION_INTERVAL))
             // how often a node will publish a record key, aka telling the others it exists
-            .set_publication_interval(Some(Duration::from_secs(5)))
+            // this is in addition the replication interval. 
+            // as records dont expire, we don't really have a 'publisher' who should republish
+            // and so this is set to Nome
+            .set_publication_interval(None)
             // 1mb packet size
             .set_max_packet_size(1024 * 1024)
             // How many nodes _should_ store data.
@@ -231,6 +234,7 @@ impl SwarmDriver {
             std::fs::create_dir_all(&storage_dir)?;
             let store_cfg = DiskBackedRecordStoreConfig {
                 max_value_bytes: 1024 * 1024,
+                max_records: 100,
                 storage_dir,
                 ..Default::default()
             };
