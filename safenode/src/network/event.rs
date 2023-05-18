@@ -13,9 +13,9 @@ use super::{
 };
 use crate::{
     domain::storage::DiskBackedRecordStore,
-    network::IDENTIFY_AGENT_STR,
+    network::{sort_peers_by_key, CLOSE_GROUP_SIZE, IDENTIFY_AGENT_STR},
     protocol::{
-        messages::{QueryResponse, Request, Response},
+        messages::{Cmd, QueryResponse, ReplicatedData, Request, Response},
         storage::Chunk,
         NetworkAddress,
     },
@@ -31,6 +31,7 @@ use libp2p::{
     swarm::{NetworkBehaviour, SwarmEvent},
     Multiaddr, PeerId,
 };
+use rand::Rng;
 #[cfg(feature = "local-discovery")]
 use std::collections::hash_map;
 use std::collections::HashSet;
@@ -41,6 +42,9 @@ use tracing::{info, warn};
 // If higher than this number of times detected,
 // the peer is counted as dropped out from the network.
 const DEAD_PEER_DETECTION_THRESHOLD: usize = 3;
+
+// Control the random replication factor, which means `one in x` copies got replicated each time.
+const RANDOM_REPLICATION_FACTOR: usize = CLOSE_GROUP_SIZE / 4;
 
 #[derive(NetworkBehaviour)]
 #[behaviour(out_event = "NodeEvent")]
@@ -197,7 +201,7 @@ impl SwarmDriver {
                         self.event_sender
                             .send(NetworkEvent::PeerAdded(*peer))
                             .await?;
-                        self.try_trigger_replication(peer);
+                        self.try_trigger_replication(peer, false);
                     }
                 }
                 KademliaEvent::InboundRequest { request } => {
@@ -287,14 +291,6 @@ impl SwarmDriver {
                 ..
             } => {
                 info!("Connection closed to Peer {peer_id} - {endpoint:?} - {cause:?}");
-
-                // This is most periodically called due to connection time out.
-                // Hence using it as a point to cleanup the replication cache.
-                self.swarm
-                    .behaviour_mut()
-                    .kademlia
-                    .store_mut()
-                    .try_clean_replication_cache();
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
                 warn!("Having OutgoingConnectionError {peer_id:?} - {error:?}");
@@ -310,7 +306,7 @@ impl SwarmDriver {
                         *value += 1;
                         if *value > DEAD_PEER_DETECTION_THRESHOLD {
                             trace!("Detected dead peer {peer_id:?}");
-                            self.try_trigger_replication(&peer_id);
+                            self.try_trigger_replication(&peer_id, true);
                             let _ = self.swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
                         }
                     } else {
@@ -325,11 +321,8 @@ impl SwarmDriver {
         Ok(())
     }
 
-    fn try_trigger_replication(&mut self, peer: &PeerId) {
-        // Replication is triggered when the newly added peer is among our closest,
-        // or the dead peer was among our closest.
-        // As the record retaining is undertaken by libp2p directly,
-        // all holding records are supposed to be replicated once triggered.
+    // Replication is triggered when the newly added peer or the dead peer was among our closest.
+    fn try_trigger_replication(&mut self, peer: &PeerId, is_dead_peer: bool) {
         let our_address = NetworkAddress::from_peer(self.self_peer_id);
         // Fetch from local shall be enough.
         let closest_peers: Vec<_> = self
@@ -340,11 +333,65 @@ impl SwarmDriver {
             .collect();
         let target = NetworkAddress::from_peer(*peer).as_kbucket_key();
         if closest_peers.iter().any(|key| *key == target) {
-            self.swarm
+            let mut all_peers: Vec<PeerId> = vec![];
+            for kbucket in self.swarm.behaviour_mut().kademlia.kbuckets() {
+                for entry in kbucket.iter() {
+                    all_peers.push(entry.node.key.clone().into_preimage());
+                }
+            }
+            let churned_peer_address = NetworkAddress::from_peer(*peer);
+            let sorted_peers =
+                if let Ok(sorted_peers) = sort_peers_by_key(all_peers, &churned_peer_address) {
+                    sorted_peers
+                } else {
+                    return;
+                };
+
+            let distance_bar = NetworkAddress::from_peer(sorted_peers[CLOSE_GROUP_SIZE - 1])
+                .distance(&churned_peer_address);
+
+            let entries_to_be_replicated = self
+                .swarm
                 .behaviour_mut()
                 .kademlia
                 .store_mut()
-                .trigger_replication();
+                .entries_to_be_replicated(churned_peer_address.as_kbucket_key(), distance_bar);
+
+            // Only need to load portion of the records.
+            let mut index: usize = {
+                let mut rng = rand::thread_rng();
+                rng.gen_range(0..RANDOM_REPLICATION_FACTOR)
+            };
+            let storage_dir = self
+                .swarm
+                .behaviour_mut()
+                .kademlia
+                .store_mut()
+                .storage_dir();
+            let dst = if is_dead_peer {
+                if sorted_peers.len() <= CLOSE_GROUP_SIZE {
+                    return;
+                }
+                sorted_peers[CLOSE_GROUP_SIZE]
+            } else {
+                *peer
+            };
+            for key in entries_to_be_replicated.iter() {
+                if index % RANDOM_REPLICATION_FACTOR == 0 {
+                    if let Some(record) = DiskBackedRecordStore::read_from_disk(key, &storage_dir) {
+                        let chunk = Chunk::new(record.value.clone().into());
+                        let request = Request::Cmd(Cmd::Replicate(ReplicatedData::Chunk(chunk)));
+                        let _ = self
+                            .swarm
+                            .behaviour_mut()
+                            .request_response
+                            .send_request(&dst, request);
+                    } else {
+                        continue;
+                    }
+                }
+                index = index.wrapping_add(1);
+            }
         }
     }
 }

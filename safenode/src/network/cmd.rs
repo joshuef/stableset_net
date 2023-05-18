@@ -12,6 +12,7 @@ use crate::{
     network::error::Result,
     protocol::{
         messages::{QueryResponse, Request, Response},
+        storage::Chunk,
         NetworkAddress,
     },
 };
@@ -199,5 +200,25 @@ impl SwarmDriver {
             }
         }
         Ok(())
+    }
+
+    pub(crate) fn replicate_to_local(&mut self, chunk: Chunk) {
+        let addr = *chunk.address();
+        debug!("That's a replicate chunk in for :{:?}", addr.name());
+
+        // Create a Kademlia record for storage
+        let record = Record {
+            key: RecordKey::new(addr.name()),
+            value: chunk.value().to_vec(),
+            publisher: None,
+            expires: None,
+        };
+
+        let _ = self
+            .swarm
+            .behaviour_mut()
+            .kademlia
+            .store_mut()
+            .write_to_local(record);
     }
 }

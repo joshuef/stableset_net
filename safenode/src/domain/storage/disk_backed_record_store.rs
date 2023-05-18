@@ -10,7 +10,7 @@ use crate::network::CLOSE_GROUP_SIZE;
 use libp2p::{
     identity::PeerId,
     kad::{
-        kbucket::Key as KBucketKey,
+        kbucket::{Distance, Key as KBucketKey},
         record::{Key, ProviderRecord, Record},
         store::{Error, RecordStore, Result},
     },
@@ -42,8 +42,6 @@ pub(crate) struct DiskBackedRecordStore {
     config: DiskBackedRecordStoreConfig,
     /// A set of keys, each corresponding to a data `Record` stored on disk.
     records: HashSet<Key>,
-    /// Records for the next replication.
-    replication_records: Vec<Key>,
     /// Time that replication triggered.
     replication_start: Instant,
 }
@@ -90,7 +88,6 @@ impl DiskBackedRecordStore {
             local_key: KBucketKey::from(local_id),
             config,
             records: Default::default(),
-            replication_records: Default::default(),
             replication_start: Instant::now(),
         }
     }
@@ -111,32 +108,21 @@ impl DiskBackedRecordStore {
         to_be_removed.iter().for_each(|key| self.remove(key));
     }
 
-    /// Trigger a future replication
-    pub(crate) fn trigger_replication(&mut self) {
+    /// Returns the list of keys that within the distance to the target
+    pub(crate) fn entries_to_be_replicated(
+        &mut self,
+        target: KBucketKey<Vec<u8>>,
+        distance_bar: Distance,
+    ) -> Vec<Key> {
         self.replication_start = Instant::now();
-        if !self.replication_records.is_empty() {
-            // Do nothing if replication already triggered.
-            return;
-        }
-
-        let mut index: usize = {
-            let mut rng = rand::thread_rng();
-            rng.gen_range(0..RANDOM_REPLICATION_FACTOR)
-        };
-
-        for key in self.records.iter() {
-            if index % RANDOM_REPLICATION_FACTOR == 0 {
-                self.replication_records.push(key.clone());
-            }
-            index += 1;
-        }
-    }
-
-    /// Cleanup the replication cache when expired, i.e. replication shall got carried out.
-    pub(crate) fn try_clean_replication_cache(&mut self) {
-        if self.replication_start + self.config.replication_interval < Instant::now() {
-            self.replication_records.clear();
-        }
+        self.records
+            .iter()
+            .filter(|key| {
+                let record_key = KBucketKey::from(key.to_vec());
+                target.distance(&record_key) < distance_bar
+            })
+            .cloned()
+            .collect()
     }
 
     // Converts a Key into a Hex string.
@@ -149,7 +135,11 @@ impl DiskBackedRecordStore {
         hex_string
     }
 
-    fn read_from_disk<'a>(key: &Key, storage_dir: &Path) -> Option<Cow<'a, Record>> {
+    pub(crate) fn storage_dir(&self) -> PathBuf {
+        self.config.storage_dir.clone()
+    }
+
+    pub(crate) fn read_from_disk<'a>(key: &Key, storage_dir: &Path) -> Option<Cow<'a, Record>> {
         let filename = Self::key_to_hex(key);
         let file_path = storage_dir.join(&filename);
 
@@ -169,6 +159,10 @@ impl DiskBackedRecordStore {
                 None
             }
         }
+    }
+
+    pub(crate) fn write_to_local(&mut self, record: Record) -> Result<()> {
+        self.put(record)
     }
 }
 
@@ -246,10 +240,19 @@ impl RecordStore for DiskBackedRecordStore {
         }
     }
 
+    // A backstop replication shall only trigger within pre-defined interval
     fn records(&self) -> Self::RecordsIter<'_> {
+        // Only need to load portion of the records.
+        let index: usize = {
+            let mut rng = rand::thread_rng();
+            rng.gen_range(0..RANDOM_REPLICATION_FACTOR)
+        };
         RecordsIterator {
             keys: self.records.iter(),
             storage_dir: self.config.storage_dir.clone(),
+            is_triggered: self.replication_start + self.config.replication_interval
+                < Instant::now(),
+            index,
         }
     }
 
@@ -278,16 +281,24 @@ impl RecordStore for DiskBackedRecordStore {
 pub(crate) struct RecordsIterator<'a> {
     keys: hash_set::Iter<'a, Key>,
     storage_dir: PathBuf,
+    is_triggered: bool,
+    index: usize,
 }
 
 impl<'a> Iterator for RecordsIterator<'a> {
     type Item = Cow<'a, Record>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if !self.is_triggered {
+            return None;
+        }
         for key in self.keys.by_ref() {
-            let record = DiskBackedRecordStore::read_from_disk(key, &self.storage_dir);
-            if record.is_some() {
-                return record;
+            self.index = self.index.wrapping_add(1);
+            if self.index % RANDOM_REPLICATION_FACTOR == 0 {
+                let record = DiskBackedRecordStore::read_from_disk(key, &self.storage_dir);
+                if record.is_some() {
+                    return record;
+                }
             }
         }
 

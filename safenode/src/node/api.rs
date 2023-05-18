@@ -252,6 +252,9 @@ impl Node {
                 self.send_response(Response::Cmd(resp), response_channel)
                     .await;
             }
+            Cmd::Replicate(_) => {
+                warn!("Replication cmd shall not be received here");
+            }
             Cmd::Register(cmd) => {
                 let result = self
                     .registers

@@ -355,6 +355,28 @@ impl SwarmDriver {
     }
 }
 
+/// Sort the provided peers by their distance to the given key.
+pub(crate) fn sort_peers_by_key(
+    mut peers: Vec<PeerId>,
+    key: &NetworkAddress,
+) -> Result<Vec<PeerId>> {
+    peers.sort_by(|a, b| {
+        let a = NetworkAddress::from_peer(*a);
+        let b = NetworkAddress::from_peer(*b);
+        key.distance(&a).cmp(&key.distance(&b))
+    });
+    let peers: Vec<PeerId> = peers.iter().take(CLOSE_GROUP_SIZE).cloned().collect();
+
+    if CLOSE_GROUP_SIZE > peers.len() {
+        warn!("Not enough peers in the k-bucket to satisfy the request");
+        return Err(Error::NotEnoughPeers {
+            found: peers.len(),
+            required: CLOSE_GROUP_SIZE,
+        });
+    }
+    Ok(peers)
+}
+
 #[derive(Clone)]
 /// API to interact with the underlying Swarm
 pub struct Network {
@@ -533,30 +555,7 @@ impl Network {
         if !client {
             closest_peers.push(self.peer_id);
         }
-        self.sort_peers_by_key(closest_peers, key)
-    }
-
-    /// Sort the provided peers by their distance to the given key.
-    fn sort_peers_by_key(
-        &self,
-        mut peers: Vec<PeerId>,
-        key: &NetworkAddress,
-    ) -> Result<Vec<PeerId>> {
-        peers.sort_by(|a, b| {
-            let a = NetworkAddress::from_peer(*a);
-            let b = NetworkAddress::from_peer(*b);
-            key.distance(&a).cmp(&key.distance(&b))
-        });
-        let peers: Vec<PeerId> = peers.iter().take(CLOSE_GROUP_SIZE).cloned().collect();
-
-        if CLOSE_GROUP_SIZE > peers.len() {
-            warn!("Not enough peers in the k-bucket to satisfy the request");
-            return Err(Error::NotEnoughPeers {
-                found: peers.len(),
-                required: CLOSE_GROUP_SIZE,
-            });
-        }
-        Ok(peers)
+        sort_peers_by_key(closest_peers, key)
     }
 
     // Send a `Request` to the provided set of peers and wait for their responses concurrently.

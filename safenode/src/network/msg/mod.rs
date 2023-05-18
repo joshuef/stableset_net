@@ -12,7 +12,7 @@ pub(crate) use codec::{MsgCodec, MsgProtocol};
 
 use crate::{
     network::{error::Error, MsgResponder, NetworkEvent, SwarmDriver},
-    protocol::messages::{Request, Response},
+    protocol::messages::{Cmd, ReplicatedData, Request, Response},
 };
 
 use libp2p::request_response::{self, Message};
@@ -33,12 +33,17 @@ impl SwarmDriver {
                     ..
                 } => {
                     trace!("Received request with id: {request_id:?}, req: {request:?}");
-                    self.event_sender
-                        .send(NetworkEvent::RequestReceived {
-                            req: request,
-                            channel: MsgResponder::FromPeer(channel),
-                        })
-                        .await?
+
+                    if let Request::Cmd(Cmd::Replicate(ReplicatedData::Chunk(chunk))) = request {
+                        self.replicate_to_local(chunk)
+                    } else {
+                        self.event_sender
+                            .send(NetworkEvent::RequestReceived {
+                                req: request,
+                                channel: MsgResponder::FromPeer(channel),
+                            })
+                            .await?
+                    }
                 }
                 Message::Response {
                     request_id,
