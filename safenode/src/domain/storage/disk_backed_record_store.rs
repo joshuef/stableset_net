@@ -25,9 +25,6 @@ use std::{
     vec,
 };
 
-// Control the random replication factor, which means `one in x` copies got replicated each time.
-const RANDOM_REPLICATION_FACTOR: usize = CLOSE_GROUP_SIZE / 2;
-
 // Each node will have a replication interval between these bounds
 // This should serve to stagger the intense replication activity across the network
 pub(crate) const REPLICATION_INTERVAL_UPPER_BOUND: Duration = Duration::from_secs(180);
@@ -92,6 +89,11 @@ impl DiskBackedRecordStore {
         }
     }
 
+    /// Returns the keys of all records stored in the store.
+    pub(crate) fn record_keys(&self) -> HashSet<Key> {
+        self.records.clone()
+    }
+
     /// Retains the records satisfying a predicate.
     #[allow(dead_code)]
     pub(crate) fn retain<F>(&mut self, predicate: F)
@@ -115,7 +117,7 @@ impl DiskBackedRecordStore {
         distance_bar: Distance,
     ) -> Vec<Key> {
         self.replication_start = Instant::now();
-        self.records
+        self.record_keys()
             .iter()
             .filter(|key| {
                 let record_key = KBucketKey::from(key.to_vec());
@@ -240,19 +242,14 @@ impl RecordStore for DiskBackedRecordStore {
         }
     }
 
-    // A backstop replication shall only trigger within pre-defined interval
+    // Return all records in the store
     fn records(&self) -> Self::RecordsIter<'_> {
-        // Only need to load portion of the records.
-        let index: usize = {
-            let mut rng = rand::thread_rng();
-            rng.gen_range(0..RANDOM_REPLICATION_FACTOR)
-        };
         RecordsIterator {
             keys: self.records.iter(),
             storage_dir: self.config.storage_dir.clone(),
             is_triggered: self.replication_start + self.config.replication_interval
                 < Instant::now(),
-            index,
+            index: 0,
         }
     }
 
@@ -293,12 +290,9 @@ impl<'a> Iterator for RecordsIterator<'a> {
             return None;
         }
         for key in self.keys.by_ref() {
-            self.index = self.index.wrapping_add(1);
-            if self.index % RANDOM_REPLICATION_FACTOR == 0 {
-                let record = DiskBackedRecordStore::read_from_disk(key, &self.storage_dir);
-                if record.is_some() {
-                    return record;
-                }
+            let record = DiskBackedRecordStore::read_from_disk(key, &self.storage_dir);
+            if record.is_some() {
+                return record;
             }
         }
 

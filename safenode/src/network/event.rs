@@ -43,9 +43,6 @@ use tracing::{info, warn};
 // the peer is counted as dropped out from the network.
 const DEAD_PEER_DETECTION_THRESHOLD: usize = 3;
 
-// Control the random replication factor, which means `one in x` copies got replicated each time.
-const RANDOM_REPLICATION_FACTOR: usize = CLOSE_GROUP_SIZE / 4;
-
 #[derive(NetworkBehaviour)]
 #[behaviour(out_event = "NodeEvent")]
 pub(super) struct NodeBehaviour {
@@ -357,17 +354,16 @@ impl SwarmDriver {
                 .store_mut()
                 .entries_to_be_replicated(churned_peer_address.as_kbucket_key(), distance_bar);
 
-            // Only need to load portion of the records.
-            let mut index: usize = {
-                let mut rng = rand::thread_rng();
-                rng.gen_range(0..RANDOM_REPLICATION_FACTOR)
-            };
+            // TODO: Can we deterministically know if we should be sending this data, vs
+            // another node? Can we limit the number of nodes that send this data?
+
             let storage_dir = self
                 .swarm
                 .behaviour_mut()
                 .kademlia
                 .store_mut()
                 .storage_dir();
+
             let dst = if is_dead_peer {
                 if sorted_peers.len() <= CLOSE_GROUP_SIZE {
                     return;
@@ -377,20 +373,18 @@ impl SwarmDriver {
                 *peer
             };
             for key in entries_to_be_replicated.iter() {
-                if index % RANDOM_REPLICATION_FACTOR == 0 {
-                    if let Some(record) = DiskBackedRecordStore::read_from_disk(key, &storage_dir) {
-                        let chunk = Chunk::new(record.value.clone().into());
-                        let request = Request::Cmd(Cmd::Replicate(ReplicatedData::Chunk(chunk)));
-                        let _ = self
-                            .swarm
-                            .behaviour_mut()
-                            .request_response
-                            .send_request(&dst, request);
-                    } else {
-                        continue;
-                    }
+                if let Some(record) = DiskBackedRecordStore::read_from_disk(key, &storage_dir) {
+                    // TODO: We only store chunks now, but this will change soon
+                    let chunk = Chunk::new(record.value.clone().into());
+                    let request = Request::Cmd(Cmd::Replicate(ReplicatedData::Chunk(chunk)));
+                    let _ = self
+                        .swarm
+                        .behaviour_mut()
+                        .request_response
+                        .send_request(&dst, request);
+                } else {
+                    continue;
                 }
-                index = index.wrapping_add(1);
             }
         }
     }
