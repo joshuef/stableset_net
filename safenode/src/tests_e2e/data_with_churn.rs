@@ -117,13 +117,13 @@ async fn data_availability_during_churn() -> Result<()> {
     // Upload some chunks before carry out any churning.
 
     // Spawn a task to store Chunks at random locations, at a higher frequency than the churning events
-    store_chunks_task(client.clone(), content.clone(), churn_period.clone());
+    store_chunks_task(client.clone(), content.clone(), churn_period);
 
     // Wait one churn period _before_ we start churning, to get some data PUT on the network
     sleep(churn_period).await;
 
     // Spawn a task to churn nodes
-    churn_nodes_task(churn_count.clone(), test_duration, churn_period.clone());
+    churn_nodes_task(churn_count.clone(), test_duration, churn_period);
 
     // Shared bucket where we keep track of the content which erred when creating/storing/fetching.
     // We remove them from this bucket if we are then able to query/fetch them successfully.
@@ -135,7 +135,7 @@ async fn data_availability_during_churn() -> Result<()> {
 
     // Spawn a task to create Registers at random locations, at a higher frequency than the churning events
     if !chunks_only {
-        create_registers_task(client.clone(), content.clone(), churn_period.clone());
+        create_registers_task(client.clone(), content.clone(), churn_period);
     }
 
     // Spawn a task to randomly query/fetch the content we create/store
@@ -143,7 +143,7 @@ async fn data_availability_during_churn() -> Result<()> {
         client.clone(),
         content.clone(),
         content_erred.clone(),
-        churn_period.clone(),
+        churn_period,
     );
 
     // Spawn a task to retry querying the content that failed, up to 'MAX_NUM_OF_QUERY_ATTEMPTS' times,
@@ -152,7 +152,7 @@ async fn data_availability_during_churn() -> Result<()> {
         client.clone(),
         content_erred.clone(),
         failures.clone(),
-        churn_period.clone(),
+        churn_period,
     );
 
     let start_time = Instant::now();
@@ -399,7 +399,7 @@ async fn final_retry_query_content(client: &Client, net_addr: &NetworkAddress) -
         let mut attempts = 1;
 
         println!("Querying content at {net_addr:?}, attempt: #{attempts} ...");
-        if let Err(last_err) = query_content(&client, &net_addr).await {
+        if let Err(last_err) = query_content(client, net_addr).await {
             println!("Content is still not retrievable at {net_addr:?} after {attempts} attempts: {last_err:?}");
             attempts += 1;
             if attempts == MAX_NUM_OF_QUERY_ATTEMPTS {
