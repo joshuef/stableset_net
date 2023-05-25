@@ -328,6 +328,7 @@ jobs:
         env:
           CHUNKS_ONLY: true
           TEST_DURATION_MINS: 60
+          TEST_CHURN_CYCLES: 12
           RUST_LOG: "safenode,safe=trace"
         timeout-minutes: 65
       
