@@ -33,7 +33,7 @@ pub const REPLICATION_INTERVAL_UPPER_BOUND: Duration = Duration::from_secs(540);
 pub const REPLICATION_INTERVAL_LOWER_BOUND: Duration = Duration::from_secs(180);
 
 /// Max number of records a node can store
-const MAX_RECORDS_COUNT: usize = 2048;
+const MAX_RECORDS_COUNT: usize = 48;
 
 /// A `RecordStore` that stores records on disk.
 pub struct DiskBackedRecordStore {
@@ -215,7 +215,7 @@ impl RecordStore for DiskBackedRecordStore {
 
         let num_records = self.records.len();
         if num_records >= self.config.max_records {
-            warn!("Record not stored. Maximum number of records reached. Current num_records: {num_records}");
+            error!("Record not stored. Maximum number of records reached. Current num_records: {num_records}");
             return Err(Error::MaxRecords);
         }
 

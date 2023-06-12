@@ -240,7 +240,7 @@ impl SwarmDriver {
         Ok(())
     }
 
-    pub(crate) fn replicate_chunk_to_local(&mut self, chunk: Chunk) {
+    pub(crate) fn replicate_chunk_to_local(&mut self, chunk: Chunk) -> Result<()> {
         let addr = *chunk.address();
         debug!("Chunk received for replication: {:?}", addr.name());
 
@@ -252,12 +252,12 @@ impl SwarmDriver {
             expires: None,
         };
 
-        let _ = self
+        Ok(self
             .swarm
             .behaviour_mut()
             .kademlia
             .store_mut()
-            .write_to_local(record);
+            .write_to_local(record)?)
     }
 
     fn replication_keys_to_fetch(&mut self, holder: NetworkAddress, keys: Vec<NetworkAddress>) {
