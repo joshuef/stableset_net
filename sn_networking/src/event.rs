@@ -430,7 +430,7 @@ impl SwarmDriver {
     fn log_kbucket(&mut self, peer: &PeerId) {
         let distance = NetworkAddress::from_peer(self.self_peer_id)
             .distance(&NetworkAddress::from_peer(*peer));
-        trace!(
+        info!(
             "New peer {peer:?} has a {:?} distance to us",
             distance.ilog2()
         );
@@ -448,7 +448,7 @@ impl SwarmDriver {
             }
             index += 1;
         }
-        trace!(
+        info!(
             "kBucketTable has {index:?} kbuckets {total_peers:?} peers, {kbucket_table_stats:?}"
         );
     }
