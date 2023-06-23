@@ -393,9 +393,13 @@ impl SwarmDriver {
                 // TODO: send an error response back?
             }
             KademliaEvent::RoutingUpdated {
-                peer, is_new_peer, ..
+                peer,
+                is_new_peer,
+                addresses,
+                ..
             } => {
                 if is_new_peer {
+                    info!("Addresses for new peer: {addresses:?}");
                     self.log_kbucket(&peer);
                     self.event_sender
                         .send(NetworkEvent::PeerAdded(peer))
