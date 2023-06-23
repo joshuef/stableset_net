@@ -448,8 +448,6 @@ impl SwarmDriver {
             }
             index += 1;
         }
-        info!(
-            "kBucketTable has {index:?} kbuckets {total_peers:?} peers, {kbucket_table_stats:?}"
-        );
+        info!("kBucketTable has {index:?} kbuckets {total_peers:?} peers, {kbucket_table_stats:?}");
     }
 }
