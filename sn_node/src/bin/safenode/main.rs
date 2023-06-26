@@ -204,7 +204,7 @@ async fn start_node(
 
     // Generate a random restart interval for the node if we're using chaos mode
     let num_nodes = 2000;
-    let restart_percentage = 100.0; // 100% restart per day
+    let restart_percentage = 1.0 * 100.0; // 100 * 100% restart per day
     let _restart_interval = generate_restart_interval(num_nodes, restart_percentage);
     #[cfg(feature = "chaos")]
     Marker::ChaosNodeRestartInterval(_restart_interval).log();
