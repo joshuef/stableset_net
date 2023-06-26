@@ -83,12 +83,12 @@ impl SwarmDriver {
                                 .map_err(|_| Error::InternalMsgChannelDropped)?;
                         }
                         None => {
-                            warn!("RequestResponse: OutboundFailure for request_id: {request_id:?} and peer: {peer:?}, with error: {error:?}");
+                            warn!("RequestResponse NoSenderFound: OutboundFailure for request_id: {request_id:?} and peer: {peer:?}, with error: {error:?}");
                             return Err(Error::ReceivedResponseDropped(request_id));
                         }
                     }
                 } else {
-                    warn!("RequestResponse: OutboundFailure for request_id: {request_id:?} and peer: {peer:?}, with error: {error:?}");
+                    warn!("RequestResponse. NoRequestFound: OutboundFailure for request_id: {request_id:?} and peer: {peer:?}, with error: {error:?}");
                     return Err(Error::ReceivedResponseDropped(request_id));
                 }
             }
