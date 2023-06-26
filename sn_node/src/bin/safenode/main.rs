@@ -14,6 +14,7 @@ mod rpc;
 use clap::Parser;
 use eyre::{eyre, Error, Result};
 use libp2p::{identity::Keypair, Multiaddr, PeerId};
+use rand::Rng;
 #[cfg(feature = "metrics")]
 use sn_logging::metrics::init_metrics;
 use sn_logging::{parse_log_format, LogFormat, LogOutputDest};
@@ -240,10 +241,28 @@ You can check your reward balance by running:
         );
     }
 
+    // Generate a random restart interval for the node if we're using chaos mode
+    let num_nodes = 2000;
+    let restart_percentage = 500; // 500% of the network restarts per day
+    let restart_interval = generate_restart_interval(num_nodes, restart_percentage)?;
+    #[cfg(feature = "chaos")]
+    Marker::ChaosNodeRestartInterval(restart_interval).log();
+
     // Keep the node and gRPC service (if enabled) running.
     // We'll monitor any NodeCtrl cmd to restart/stop/update,
     loop {
-        match ctrl_rx.recv().await {
+        let ctrl_cmd = if cfg!(feature = "chaos") {
+            let timeout = tokio::time::timeout(restart_interval, ctrl_rx.recv()).await;
+            if timeout.is_err() {
+                Marker::ChaosNodeRestarting.log();
+                break Ok(());
+            };
+            timeout?
+        } else {
+            ctrl_rx.recv().await
+        };
+
+        match ctrl_cmd {
             Some(NodeCtrl::Restart(delay)) => {
                 let msg = format!("Node is restarting in {delay:?}...");
                 info!("{msg}");
@@ -478,4 +497,38 @@ fn start_new_node_process() {
             return;
         }
     };
+}
+
+/// Generate a restart interval given a num of nodes and a percentage of nodes to restart
+/// in one day
+fn generate_restart_interval(num_nodes: usize, restart_percentage: usize) -> Result<Duration> {
+    const SECONDS_PER_DAY: u64 = 24 * 60 * 60; // 24 hours in seconds
+
+    let restart_percentage = restart_percentage as f32 / 100.0;
+    // Calculate the number of nodes to restart in a given day
+    let restart_count = (num_nodes as f32 * restart_percentage).round() as u64;
+
+    // Check if the restart count is zero, return an error if it is
+    if restart_count > SECONDS_PER_DAY {
+        return Err(Error::msg(format!(
+            "Total restart count would exceed 1 node/second: {} (seconds per day: {})",
+            restart_count, SECONDS_PER_DAY
+        )));
+    }
+    if restart_count == 0 {
+        return Err(Error::msg("Invalid node restart count of zero".to_string()));
+    }
+
+    // Calculate the max interval between restarts
+    let avg_interval = SECONDS_PER_DAY / restart_count;
+    let largest_interval = avg_interval * num_nodes as u64;
+
+    // Create a random number generator
+    let mut rng = rand::thread_rng();
+
+    // Generate a random restart interval within the range of the minimum interval and the total seconds in a day
+    let restart_interval = rng.gen_range(0..=largest_interval);
+
+    // Return the restart interval as a Duration
+    Ok(Duration::from_secs(restart_interval))
 }

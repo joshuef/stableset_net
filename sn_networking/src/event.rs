@@ -662,9 +662,11 @@ impl SwarmDriver {
                 peer,
                 is_new_peer,
                 old_peer,
+                addresses,
                 ..
             } => {
                 if is_new_peer {
+                    info!("Addresses for new peer: {addresses:?}");
                     self.log_kbuckets(&peer);
                     self.send_event(NetworkEvent::PeerAdded(peer));
                     let connected_peers = self.swarm.connected_peers().count();

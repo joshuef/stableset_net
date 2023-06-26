@@ -25,6 +25,8 @@ metrics = ["sn_logging/process-metrics"]
 network-contacts = ["sn_peers_acquisition/network-contacts"]
 open-metrics = ["sn_networking/open-metrics", "prometheus-client"]
 quic=["sn_networking/quic"]
+# This causes nodes to restart intermittently
+chaos = []
 
 [dependencies]
 async-trait = "0.1"
