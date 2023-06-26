@@ -20,6 +20,12 @@ pub enum Marker<'a> {
     /// The node has started
     NodeConnectedToNetwork,
 
+    /// Chaos is enabled and the node will restart in the given duration
+    ChaosNodeRestartInterval(Duration),
+
+    /// Node restarting as part of chaos
+    ChaosNodeRestarting,
+
     /// No network activity in some time
     NoNetworkActivity(Duration),
 

@@ -20,6 +20,7 @@ use sn_peers_acquisition::PeersArgs;
 use clap::Parser;
 use eyre::{eyre, Error, Result};
 use libp2p::{Multiaddr, PeerId};
+use rand::Rng;
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::{Path, PathBuf},
@@ -201,9 +202,23 @@ async fn start_node(
         rpc::start_rpc_service(addr, log_dir, running_node, ctrl_tx, started_instant);
     }
 
+    // Generate a random restart interval for the node if we're using chaos mode
+    let num_nodes = 2000;
+    let restart_percentage = 1.0; // 100% restart per day
+    let _restart_interval = generate_restart_interval(num_nodes, restart_percentage);
+    #[cfg(feature = "chaos")]
+    Marker::ChaosNodeRestartInterval(_restart_interval).log();
+
     // Keep the node and gRPC service (if enabled) running.
     // We'll monitor any NodeCtrl cmd to restart/stop/update,
     loop {
+        #[cfg(feature = "chaos")]
+        {
+            if started_instant.elapsed() > _restart_interval {
+                Marker::ChaosNodeRestarting.log();
+                break Ok(());
+            }
+        }
         match ctrl_rx.recv().await {
             Some(NodeCtrl::Restart(delay)) => {
                 let msg = format!("Node is restarting in {delay:?}...");
@@ -288,4 +303,18 @@ fn get_root_dir_path(root_dir_path: Option<PathBuf>) -> Result<PathBuf> {
     };
     std::fs::create_dir_all(path.clone())?;
     Ok(path)
+}
+
+/// Generate a restart interval given a num of nodes and a percentage of nodes to restart
+/// in one day
+fn generate_restart_interval(num_nodes: u32, restart_percentage: f32) -> Duration {
+    const SECONDS_PER_DAY: u64 = 24 * 60 * 60; // 24 hours in seconds
+
+    let restart_count = (num_nodes as f32 * restart_percentage).round() as u32;
+    let min_interval = SECONDS_PER_DAY / restart_count as u64;
+
+    let mut rng = rand::thread_rng();
+    let restart_interval = rng.gen_range(min_interval..=SECONDS_PER_DAY);
+
+    Duration::from_secs(restart_interval)
 }

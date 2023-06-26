@@ -22,6 +22,8 @@ default=["metrics"]
 local-discovery=["sn_networking/local-discovery"]
 otlp = ["sn_logging/otlp"]
 metrics = ["sn_logging/process-metrics"]
+# This causes nodes to restart intermittently
+chaos = []
 
 [dependencies]
 async-trait = "0.1"
