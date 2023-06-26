@@ -10,6 +10,7 @@ use sn_dbc::DbcId;
 use sn_protocol::storage::{ChunkAddress, RegisterAddress};
 use tokio::sync::broadcast;
 
+const NODE_EVENTS_CHANNEL_CAPACITY: usize = 10_000;
 /// Channel where users of the public API can listen to events broadcasted by the node.
 #[derive(Clone, Debug)]
 pub struct NodeEventsChannel(broadcast::Sender<NodeEvent>);
@@ -19,7 +20,7 @@ pub type NodeEventsReceiver = broadcast::Receiver<NodeEvent>;
 
 impl Default for NodeEventsChannel {
     fn default() -> Self {
-        Self(broadcast::channel(100).0)
+        Self(broadcast::channel(NODE_EVENTS_CHANNEL_CAPACITY).0)
     }
 }
 

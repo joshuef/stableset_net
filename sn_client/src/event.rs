@@ -16,7 +16,7 @@ pub(super) struct ClientEventsChannel(broadcast::Sender<ClientEvent>);
 
 impl Default for ClientEventsChannel {
     fn default() -> Self {
-        Self(broadcast::channel(100).0)
+        Self(broadcast::channel(10_000).0)
     }
 }
 
