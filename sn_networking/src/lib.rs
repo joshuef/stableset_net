@@ -54,7 +54,7 @@ use sn_record_store::{
     REPLICATION_INTERVAL_UPPER_BOUND,
 };
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     iter,
     net::SocketAddr,
     num::NonZeroUsize,
@@ -106,6 +106,7 @@ pub struct SwarmDriver {
     replication_fetcher: ReplicationFetcher,
     local: bool,
     dialed_peers: CircularVec<PeerId>,
+    dead_peers: BTreeSet<PeerId>,
 }
 
 impl SwarmDriver {
@@ -360,6 +361,7 @@ impl SwarmDriver {
             replication_fetcher: Default::default(),
             local,
             dialed_peers: CircularVec::new(63),
+            dead_peers: Default::default(),
         };
 
         Ok((
