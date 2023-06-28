@@ -8,7 +8,7 @@
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::Read;
 use std::str::FromStr;
 use zip::read::ZipArchive;
 
@@ -40,31 +40,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize a HashMap to store the balances
     let mut balances: HashMap<String, f64> = HashMap::new();
 
-    // Iterate over each transaction
-    for tx in transactions {
-        match tx.tx_type.as_str() {
-            "Simple Send" => {
-                let amount = f64::from_str(&tx.amount.unwrap_or_else(|| "0".to_string()))?;
-                if let Some(sender) = tx.sendingaddress {
-                    *balances.entry(sender).or_insert(0.0) -= amount;
-                }
-                if let Some(recipient) = tx.referenceaddress {
-                    *balances.entry(recipient).or_insert(0.0) += amount;
-                }
+    // First pass: handle "Crowdsale Purchase" transactions
+    for tx in &transactions {
+        if tx.tx_type == "Crowdsale Purchase" {
+            if let Some(recipient) = &tx.referenceaddress {
+                let purchased_tokens = f64::from_str(&tx.purchasedtokens.as_ref().unwrap_or(&"0".to_string()))?;
+                *balances.entry(recipient.clone()).or_insert(0.0) += purchased_tokens;
             }
-            "Crowdsale Purchase" => {
-                if let Some(recipient) = tx.referenceaddress {
-                    let purchased_tokens = f64::from_str(&tx.purchasedtokens.unwrap_or_else(|| "0".to_string()))?;
-                    *balances.entry(recipient).or_insert(0.0) += purchased_tokens;
-                }
-            }
-            _ => {}
         }
     }
 
-    // Filter out addresses with zero balance and print them
+    // Second pass: handle "Simple Send" transactions
+    for tx in &transactions {
+        if tx.tx_type == "Simple Send" {
+            if let Some(sender) = &tx.sendingaddress {
+                let amount = f64::from_str(&tx.amount.as_ref().unwrap_or(&"0".to_string()))?;
+                *balances.entry(sender.clone()).or_insert(0.0) -= amount;
+            }
+            if let Some(recipient) = &tx.referenceaddress {
+                let amount = f64::from_str(&tx.amount.as_ref().unwrap_or(&"0".to_string()))?;
+                *balances.entry(recipient.clone()).or_insert(0.0) += amount;
+            }
+        }
+    }
+
+    // Filter out addresses with zero or negative balance and print them
     for (address, balance) in balances {
-        if balance != 0.0 {
+        if balance > 0.0 {
             println!("Address: {}, Balance: {}", address, balance);
         }
     }
