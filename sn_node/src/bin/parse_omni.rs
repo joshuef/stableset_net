@@ -18,36 +18,47 @@ struct Transaction {
     referenceaddress: Option<String>,
     amount: Option<String>,
     purchasedtokens: Option<String>,
+    #[serde(rename = "type")]
+    tx_type: String,
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Open the ZIP file
-    let zip_file = File::open("./resources/all_maidsafecoin_txs_omnicore_2022-09-06.json.zip").unwrap();
-    let mut archive = ZipArchive::new(zip_file).unwrap();
+    let zip_file = File::open("./resources/all_maidsafecoin_txs_omnicore_2022-09-06.json.zip")?;
+    let mut archive = ZipArchive::new(zip_file)?;
 
     // Assume that the ZIP file contains exactly one file and open it
-    let mut file = archive.by_index(0).unwrap();
+    let mut file = archive.by_index(0)?;
 
     // Read the JSON data from the file
     let mut json_data = String::new();
-    file.read_to_string(&mut json_data).unwrap();
+    file.read_to_string(&mut json_data)?;
 
     // Parse the JSON data into a Vector of Transactions
-    let transactions: Vec<Transaction> = serde_json::from_str(&json_data).unwrap();
+    let transactions: Vec<Transaction> = serde_json::from_str(&json_data)?;
 
     // Initialize a HashMap to store the balances
     let mut balances: HashMap<String, f64> = HashMap::new();
 
     // Iterate over each transaction
     for tx in transactions {
-        if let Some(sender) = tx.sendingaddress {
-            let amount = f64::from_str(&tx.amount.unwrap_or_else(|| "0".to_string())).unwrap();
-            *balances.entry(sender).or_insert(0.0) -= amount;
-        }
-        
-        if let Some(recipient) = tx.referenceaddress {
-            let purchased_tokens = f64::from_str(&tx.purchasedtokens.unwrap_or_else(|| "0".to_string())).unwrap();
-            *balances.entry(recipient).or_insert(0.0) += purchased_tokens;
+        match tx.tx_type.as_str() {
+            "Simple Send" => {
+                let amount = f64::from_str(&tx.amount.unwrap_or_else(|| "0".to_string()))?;
+                if let Some(sender) = tx.sendingaddress {
+                    *balances.entry(sender).or_insert(0.0) -= amount;
+                }
+                if let Some(recipient) = tx.referenceaddress {
+                    *balances.entry(recipient).or_insert(0.0) += amount;
+                }
+            }
+            "Crowdsale Purchase" => {
+                if let Some(recipient) = tx.referenceaddress {
+                    let purchased_tokens = f64::from_str(&tx.purchasedtokens.unwrap_or_else(|| "0".to_string()))?;
+                    *balances.entry(recipient).or_insert(0.0) += purchased_tokens;
+                }
+            }
+            _ => {}
         }
     }
 
@@ -57,4 +68,6 @@ fn main() {
             println!("Address: {}, Balance: {}", address, balance);
         }
     }
+
+    Ok(())
 }
