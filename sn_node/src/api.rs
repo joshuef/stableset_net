@@ -364,9 +364,9 @@ impl Node {
                     Ok(cmd_ok) => {
                         self.events_channel.broadcast(NodeEvent::ChunkStored(addr));
                         let mut stateless_node_copy = self.clone();
-                        let _handle = spawn(async move {
-                            stateless_node_copy.try_replicate_an_entry(addr).await;
-                        });
+                        // let _handle = spawn(async move {
+                        //     stateless_node_copy.try_replicate_an_entry(addr).await;
+                        // });
                         CmdResponse::StoreChunk(Ok(cmd_ok))
                     }
                     Err(err) => {
