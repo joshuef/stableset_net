@@ -171,7 +171,7 @@ impl Files {
         //.ok_or(super::Error::MissingPaymentProof(address))?;
 
         let dst = NetworkAddress::from_chunk_address(address);
-        let closest_peers = self.client.get_closest_local_peers(&dst).await?;
+        let closest_peers = self.client.get_closest_peers(&dst).await?;
         self.client
             .store_chunk(chunk, payment, closest_peers)
             .await?;
