@@ -367,7 +367,7 @@ impl SwarmDriver {
             pending_record_put: Default::default(),
             replication_fetcher: Default::default(),
             local,
-            dialed_peers: CircularVec::new(63),
+            dialed_peers: CircularVec::new(250),
             dead_peers: Default::default(),
         };
 
