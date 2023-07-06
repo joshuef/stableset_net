@@ -73,7 +73,7 @@ pub const CLOSE_GROUP_SIZE: usize = 8;
 // Timeout for requests sent/received through the request_response behaviour.
 const REQUEST_TIMEOUT_DEFAULT_S: Duration = Duration::from_secs(30);
 // Sets the keep-alive timeout of idle connections.
-const CONNECTION_KEEP_ALIVE_TIMEOUT: Duration = Duration::from_secs(30);
+const CONNECTION_KEEP_ALIVE_TIMEOUT: Duration = Duration::from_secs(180);
 
 /// Our agent string has as a prefix that we can match against.
 pub const IDENTIFY_AGENT_STR: &str = "safe/node/";
@@ -148,7 +148,7 @@ impl SwarmDriver {
             // Set to `None` to ensure periodic publish disabled.
             .set_publication_interval(None)
             // 1mb packet size
-            .set_max_packet_size(1024 * 1024)
+            .set_max_packet_size(2048 * 1024)
             // How many nodes _should_ store data.
             .set_replication_factor(
                 NonZeroUsize::new(CLOSE_GROUP_SIZE).ok_or_else(|| Error::InvalidCloseGroupSize)?,
@@ -197,7 +197,7 @@ impl SwarmDriver {
 
         // 1mb packet size
         let _ = kad_cfg
-            .set_max_packet_size(1024 * 1024)
+            .set_max_packet_size(2048 * 1024)
             // Require iterative queries to use disjoint paths for increased resiliency in the presence of potentially adversarial nodes.
             .disjoint_query_paths(true)
             // How many nodes _should_ store data.
@@ -251,9 +251,9 @@ impl SwarmDriver {
         // RequestResponse Behaviour
         let request_response = {
             let mut cfg = RequestResponseConfig::default();
-            let _ = cfg
-                .set_request_timeout(request_response_timeout.unwrap_or(REQUEST_TIMEOUT_DEFAULT_S))
-                .set_connection_keep_alive(CONNECTION_KEEP_ALIVE_TIMEOUT);
+            // let _ = cfg
+                // .set_request_timeout(request_response_timeout.unwrap_or(REQUEST_TIMEOUT_DEFAULT_S))
+                // .set_connection_keep_alive(CONNECTION_KEEP_ALIVE_TIMEOUT);
 
             request_response::Behaviour::new(
                 MsgCodec(),

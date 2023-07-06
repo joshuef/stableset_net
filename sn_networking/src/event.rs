@@ -368,11 +368,11 @@ impl SwarmDriver {
                 stats,
                 step,
             } => {
-                trace!(
-                    "Query task {id:?} returned with record {:?} from peer {:?}, {stats:?} - {step:?}",
-                    peer_record.record.key,
-                    peer_record.peer
-                );
+                // trace!(
+                //     "Query task {id:?} returned with record {:?} from peer {:?}, {stats:?} - {step:?}",
+                //     peer_record.record.key,
+                //     peer_record.peer
+                // );
                 if let Some(sender) = self.pending_query.remove(&id) {
                     sender
                         .send(Ok(peer_record.record))
