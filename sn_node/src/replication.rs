@@ -144,7 +144,7 @@ impl Node {
         let peer_id = if let Some(peer_id) = holder.as_peer_id() {
             peer_id
         } else {
-            warn!("Cann't parse PeerId from NetworkAddress {holder:?}");
+            warn!("Can't parse PeerId from NetworkAddress {holder:?}");
             return Ok(());
         };
         trace!("Convert {holder:?} to {peer_id:?}");
@@ -160,6 +160,8 @@ impl Node {
             .network
             .add_keys_to_replication_fetcher(peer_id, non_existing_keys)
             .await?;
+
+        debug!("Going to fetch missing keys {keys_to_fetch:?}");
         self.fetch_replication_keys_without_wait(keys_to_fetch)
             .await?;
         Ok(())
