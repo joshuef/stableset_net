@@ -31,107 +31,110 @@ impl Node {
         churned_peer: &PeerId,
         is_dead_peer: bool,
     ) -> Result<()> {
+    
         Marker::ReplicationTriggered((churned_peer, is_dead_peer)).log();
-        let our_address = NetworkAddress::from_peer(self.network.peer_id);
-        let churned_peer_address = NetworkAddress::from_peer(*churned_peer);
+        // hack to test if this is our mem cause or it's connectivity in general
+        return Ok(());
+        // let our_address = NetworkAddress::from_peer(self.network.peer_id);
+        // let churned_peer_address = NetworkAddress::from_peer(*churned_peer);
 
-        let all_peers = self.network.get_all_local_peers().await?;
-        if all_peers.len() < 2 * CLOSE_GROUP_SIZE {
-            return Ok(());
-        }
+        // let all_peers = self.network.get_all_local_peers().await?;
+        // if all_peers.len() < 2 * CLOSE_GROUP_SIZE {
+        //     return Ok(());
+        // }
 
-        // Only nearby peers (two times of the CLOSE_GROUP_SIZE) may affect the later on
-        // calculation of `closest peers to each entry`.
-        // Hence to reduce the computation work, no need to take all peers.
-        let sorted_peers: Vec<PeerId> = if let Ok(sorted_peers) =
-            sort_peers_by_address(all_peers, &churned_peer_address, 2 * CLOSE_GROUP_SIZE)
-        {
-            sorted_peers
-        } else {
-            return Ok(());
-        };
+        // // Only nearby peers (two times of the CLOSE_GROUP_SIZE) may affect the later on
+        // // calculation of `closest peers to each entry`.
+        // // Hence to reduce the computation work, no need to take all peers.
+        // let sorted_peers: Vec<PeerId> = if let Ok(sorted_peers) =
+        //     sort_peers_by_address(all_peers, &churned_peer_address, 2 * CLOSE_GROUP_SIZE)
+        // {
+        //     sorted_peers
+        // } else {
+        //     return Ok(());
+        // };
 
-        let distance_bar = match sorted_peers.get(CLOSE_GROUP_SIZE) {
-            Some(peer) => NetworkAddress::from_peer(*peer).distance(&our_address),
-            None => {
-                debug!("could not obtain distance_bar as sorted_peers.len() <= CLOSE_GROUP_SIZE ");
-                return Ok(());
-            }
-        };
+        // let distance_bar = match sorted_peers.get(CLOSE_GROUP_SIZE) {
+        //     Some(peer) => NetworkAddress::from_peer(*peer).distance(&our_address),
+        //     None => {
+        //         debug!("could not obtain distance_bar as sorted_peers.len() <= CLOSE_GROUP_SIZE ");
+        //         return Ok(());
+        //     }
+        // };
 
-        // Do nothing if self is not among the closest range.
-        if our_address.distance(&churned_peer_address) > distance_bar {
-            return Ok(());
-        }
+        // // Do nothing if self is not among the closest range.
+        // if our_address.distance(&churned_peer_address) > distance_bar {
+        //     return Ok(());
+        // }
 
-        // Setup the record storage distance range.
-        self.network.set_record_distance_range(distance_bar).await?;
+        // // Setup the record storage distance range.
+        // self.network.set_record_distance_range(distance_bar).await?;
 
-        // The fetched entries are records that supposed to be held by the churned_peer.
-        let entries_to_be_replicated = self
-            .network
-            .get_record_keys_closest_to_target(&churned_peer_address, distance_bar)
-            .await?;
+        // // The fetched entries are records that supposed to be held by the churned_peer.
+        // let entries_to_be_replicated = self
+        //     .network
+        //     .get_record_keys_closest_to_target(&churned_peer_address, distance_bar)
+        //     .await?;
 
-        let mut replications: BTreeMap<PeerId, Vec<NetworkAddress>> = Default::default();
-        for key in entries_to_be_replicated.iter() {
-            let record_key = KBucketKey::from(key.to_vec());
-            let closest_peers: Vec<_> = if let Ok(sorted_peers) =
-                sort_peers_by_key(sorted_peers.clone(), &record_key, CLOSE_GROUP_SIZE + 1)
-            {
-                sorted_peers
-            } else {
-                continue;
-            };
+        // let mut replications: BTreeMap<PeerId, Vec<NetworkAddress>> = Default::default();
+        // for key in entries_to_be_replicated.iter() {
+        //     let record_key = KBucketKey::from(key.to_vec());
+        //     let closest_peers: Vec<_> = if let Ok(sorted_peers) =
+        //         sort_peers_by_key(sorted_peers.clone(), &record_key, CLOSE_GROUP_SIZE + 1)
+        //     {
+        //         sorted_peers
+        //     } else {
+        //         continue;
+        //     };
 
-            // Only carry out replication when self within REPLICATION_RANGE
-            let replicate_range = match closest_peers.get(REPLICATION_RANGE) {
-                Some(peer) => NetworkAddress::from_peer(*peer),
-                None => {
-                    debug!("could not obtain replicate_range as closest_peers.len() <= REPLICATION_RANGE");
-                    continue;
-                }
-            };
+        //     // Only carry out replication when self within REPLICATION_RANGE
+        //     let replicate_range = match closest_peers.get(REPLICATION_RANGE) {
+        //         Some(peer) => NetworkAddress::from_peer(*peer),
+        //         None => {
+        //             debug!("could not obtain replicate_range as closest_peers.len() <= REPLICATION_RANGE");
+        //             continue;
+        //         }
+        //     };
 
-            if our_address.as_kbucket_key().distance(&record_key)
-                >= replicate_range.as_kbucket_key().distance(&record_key)
-            {
-                continue;
-            }
+        //     if our_address.as_kbucket_key().distance(&record_key)
+        //         >= replicate_range.as_kbucket_key().distance(&record_key)
+        //     {
+        //         continue;
+        //     }
 
-            let dsts = if is_dead_peer {
-                // To ensure more copies to be retained across the network,
-                // make all closest_peers as target in case of peer drop out.
-                // This can be reduced depends on the performance.
-                closest_peers
-            } else {
-                vec![*churned_peer]
-            };
+        //     let dsts = if is_dead_peer {
+        //         // To ensure more copies to be retained across the network,
+        //         // make all closest_peers as target in case of peer drop out.
+        //         // This can be reduced depends on the performance.
+        //         closest_peers
+        //     } else {
+        //         vec![*churned_peer]
+        //     };
 
-            for peer in dsts {
-                let keys_to_replicate = replications.entry(peer).or_insert(Default::default());
-                keys_to_replicate.push(NetworkAddress::from_record_key(key.clone()));
-            }
-        }
+        //     for peer in dsts {
+        //         let keys_to_replicate = replications.entry(peer).or_insert(Default::default());
+        //         keys_to_replicate.push(NetworkAddress::from_record_key(key.clone()));
+        //     }
+        // }
 
-        // Avoid replicate to self or to a dead peer
-        let _ = replications.remove(&self.network.peer_id);
-        if is_dead_peer {
-            let _ = replications.remove(churned_peer);
-        }
+        // // Avoid replicate to self or to a dead peer
+        // let _ = replications.remove(&self.network.peer_id);
+        // if is_dead_peer {
+        //     let _ = replications.remove(churned_peer);
+        // }
 
-        for (peer_id, keys) in replications {
-            let (_left, mut remaining_keys) = keys.split_at(0);
-            while remaining_keys.len() > MAX_REPLICATION_KEYS_PER_REQUEST {
-                let (left, right) = remaining_keys.split_at(MAX_REPLICATION_KEYS_PER_REQUEST);
-                remaining_keys = right;
-                self.send_replicate_cmd_without_wait(&our_address, &peer_id, left.to_vec())
-                    .await?;
-            }
-            self.send_replicate_cmd_without_wait(&our_address, &peer_id, remaining_keys.to_vec())
-                .await?;
-        }
-        Ok(())
+        // for (peer_id, keys) in replications {
+        //     let (_left, mut remaining_keys) = keys.split_at(0);
+        //     while remaining_keys.len() > MAX_REPLICATION_KEYS_PER_REQUEST {
+        //         let (left, right) = remaining_keys.split_at(MAX_REPLICATION_KEYS_PER_REQUEST);
+        //         remaining_keys = right;
+        //         self.send_replicate_cmd_without_wait(&our_address, &peer_id, left.to_vec())
+        //             .await?;
+        //     }
+        //     self.send_replicate_cmd_without_wait(&our_address, &peer_id, remaining_keys.to_vec())
+        //         .await?;
+        // }
+        // Ok(())
     }
 
     /// Notify a list of keys within a holder to be replicated to self.
