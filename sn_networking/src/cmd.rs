@@ -23,6 +23,8 @@ use sn_protocol::{
 use std::collections::HashSet;
 use tokio::sync::oneshot;
 
+use custom_debug::Debug;
+
 /// Commands to send to the Swarm
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
@@ -95,6 +97,7 @@ pub enum SwarmCmd {
     },
     /// Put record to the local RecordStore
     PutLocalRecord {
+        #[debug(skip)]
         record: Record,
     },
     /// Get the list of keys that within the provided distance to the target Key

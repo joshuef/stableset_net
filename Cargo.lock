@@ -3751,6 +3751,7 @@ dependencies = [
  "async-trait",
  "blsttc",
  "bytes",
+ "custom_debug",
  "futures",
  "itertools",
  "libp2p",
