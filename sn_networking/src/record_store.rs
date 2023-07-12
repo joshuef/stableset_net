@@ -116,7 +116,7 @@ impl DiskBackedRecordStore {
 
     /// Returns the list of keys that are within the provided distance to the target
     pub fn get_record_keys_closest_to_target(
-        &mut self,
+        &self,
         target: KBucketKey<Vec<u8>>,
         distance_bar: Distance,
     ) -> Vec<Key> {

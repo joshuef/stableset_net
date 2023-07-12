@@ -139,9 +139,9 @@ impl SwarmDriver {
             } => {
                 let peers = self
                     .swarm
-                    .behaviour_mut()
+                    .behaviour()
                     .kademlia
-                    .store_mut()
+                    .store()
                     .get_record_keys_closest_to_target(key.as_kbucket_key(), distance);
                 let _ = sender.send(peers);
             }
@@ -151,7 +151,7 @@ impl SwarmDriver {
                     .swarm
                     .behaviour_mut()
                     .kademlia
-                    .store_mut()
+                    .store()
                     .record_addresses();
 
                 // remove any keys that we already have from replication fetcher
@@ -194,9 +194,9 @@ impl SwarmDriver {
             SwarmCmd::GetLocalRecord { key, sender } => {
                 let record = self
                     .swarm
-                    .behaviour_mut()
+                    .behaviour()
                     .kademlia
-                    .store_mut()
+                    .store()
                     .get(&key)
                     .map(|rec| rec.into_owned());
                 let _ = sender.send(record);
@@ -218,12 +218,7 @@ impl SwarmDriver {
                     .put_verified(record)?;
             }
             SwarmCmd::RecordStoreHasKey { key, sender } => {
-                let has_key = self
-                    .swarm
-                    .behaviour_mut()
-                    .kademlia
-                    .store_mut()
-                    .contains(&key);
+                let has_key = self.swarm.behaviour().kademlia.store().contains(&key);
                 let _ = sender.send(has_key);
             }
 
