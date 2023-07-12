@@ -131,6 +131,7 @@ pub struct SwarmLocalState {
 
 impl SwarmDriver {
     pub(crate) async fn handle_cmd(&mut self, cmd: SwarmCmd) -> Result<(), Error> {
+        info!("Handling SwarmCmd: {:?}", cmd);
         match cmd {
             SwarmCmd::GetRecordKeysClosestToTarget {
                 key,
