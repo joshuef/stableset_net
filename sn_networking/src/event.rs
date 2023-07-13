@@ -282,7 +282,7 @@ impl SwarmDriver {
                         let _ = self.swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
                     }
 
-                    self.update_local_peers(&peer_id);
+                    self.update_local_peers(peer_id);
                 }
             }
             SwarmEvent::IncomingConnectionError { .. } => {}
@@ -447,7 +447,7 @@ impl SwarmDriver {
                     self.send_event(NetworkEvent::PeerRemoved(peer));
                 }
 
-                self.update_local_peers(&peer);
+                self.update_local_peers(peer);
             }
             KademliaEvent::InboundRequest {
                 request: InboundRequest::PutRecord { .. },
@@ -474,10 +474,13 @@ impl SwarmDriver {
         Ok(())
     }
 
-    pub(crate) fn log_kbuckets(&mut self, peer: &PeerId) {
+    pub(crate) fn log_kbuckets(&mut self, changed_peer: PeerId) {
         let distance = NetworkAddress::from_peer(self.self_peer_id)
-            .distance(&NetworkAddress::from_peer(*peer));
-        info!("Peer {peer:?} has a {:?} distance to us", distance.ilog2());
+            .distance(&NetworkAddress::from_peer(changed_peer));
+        info!(
+            "Peer {changed_peer:?} has a {:?} distance to us",
+            distance.ilog2()
+        );
         let mut kbucket_table_stats = vec![];
         let mut index = 0;
         let mut total_peers = 0;

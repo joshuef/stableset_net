@@ -133,7 +133,7 @@ impl SwarmDriver {
     /// it mayyy not be up to date, but it should be faster and prevent repeated blocking
     /// calls to the swarm
     pub(crate) fn handle_immutable_store_cmd(
-        local_peers: &Vec<PeerId>,
+        local_peers: &[PeerId],
         store: &DiskBackedRecordStore,
         cmd: SwarmCmd,
     ) -> Result<Option<SwarmCmd>, Error> {
@@ -155,7 +155,7 @@ impl SwarmDriver {
                 return Ok(Some(cmd))
             }
             SwarmCmd::GetAllLocalPeers { sender } => {
-                let _ = sender.send(local_peers.clone());
+                let _ = sender.send(local_peers.to_vec());
             }
             SwarmCmd::GetRecordKeysClosestToTarget {
                 key,
@@ -383,7 +383,7 @@ impl SwarmDriver {
     /// Also logs the k-buckets information
     ///
     /// This should prevent having to dive into the swarm driver to get the local peers
-    pub(crate) fn update_local_peers(&mut self, changed_peer_id: &PeerId) {
+    pub(crate) fn update_local_peers(&mut self, changed_peer_id: PeerId) {
         let mut all_peers: Vec<PeerId> = vec![];
         for kbucket in self.swarm.behaviour_mut().kademlia.kbuckets() {
             for entry in kbucket.iter() {
@@ -393,7 +393,7 @@ impl SwarmDriver {
         all_peers.push(self.self_peer_id);
 
         self.all_local_peers = all_peers;
-        self.log_kbuckets(&changed_peer_id);
+        self.log_kbuckets(changed_peer_id);
     }
 
     /// Dials the given multiaddress. If address contains a peer ID, simultaneous
