@@ -7,7 +7,9 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 
 use super::{error::Error, MsgResponder, NetworkEvent, SwarmDriver};
-use crate::{error::Result, multiaddr_pop_p2p, CLOSE_GROUP_SIZE};
+use crate::{
+    error::Result, multiaddr_pop_p2p, record_store::DiskBackedRecordStore, CLOSE_GROUP_SIZE,
+};
 use libp2p::{
     kad::{store::RecordStore, KBucketDistance as Distance, Quorum, Record, RecordKey},
     swarm::{
@@ -134,70 +136,53 @@ pub struct SwarmLocalState {
 
 impl SwarmDriver {
     /// Returns the cmd if it cannot be processed immediately
-    pub(crate) async fn handle_immutable_cmd(&self, cmd: SwarmCmd) -> Result<Option<SwarmCmd>, Error> {
+    /// Handles store queries via a cloned instance.
+    /// it mayyy not be up to date, but it should be faster and prevent repeated blocking
+    /// calls to the swarm
+    pub(crate) async fn handle_immutable_store_cmd(
+        store: &DiskBackedRecordStore,
+        cmd: SwarmCmd,
+    ) -> Result<Option<SwarmCmd>, Error> {
         match cmd {
-            SwarmCmd::AddKeysToReplicationFetcher { .. } 
-            | SwarmCmd::SetRecordDistanceRange { .. } 
-            | SwarmCmd::NotifyFetchResult {..} 
-            | SwarmCmd::GetNetworkRecord {..} 
-            | SwarmCmd::PutRecord {..} 
-            | SwarmCmd::Dial {..} 
-            | SwarmCmd::PutLocalRecord {..} 
-            | SwarmCmd::AddToRoutingTable {..} 
-            | SwarmCmd::SendRequest {..} 
-            | SwarmCmd::SendResponse {..} 
-            | SwarmCmd::GetClosestPeers {..} 
+            SwarmCmd::AddKeysToReplicationFetcher { .. }
+            | SwarmCmd::SetRecordDistanceRange { .. }
+            | SwarmCmd::NotifyFetchResult {..}
+            | SwarmCmd::GetNetworkRecord {..}
+            | SwarmCmd::PutRecord {..}
+            | SwarmCmd::Dial {..}
+            | SwarmCmd::PutLocalRecord {..}
+            | SwarmCmd::AddToRoutingTable {..}
+            | SwarmCmd::SendRequest {..}
+            | SwarmCmd::SendResponse {..}
+            | SwarmCmd::GetClosestPeers {..}
             // THIS SHOULD NOT NEED MUT
-            | SwarmCmd::GetClosestLocalPeers {..} 
+            | SwarmCmd::GetClosestLocalPeers {..}
             // THIS SHOULD NOT NEED MUT
-            | SwarmCmd::GetAllLocalPeers {..} 
+            | SwarmCmd::GetAllLocalPeers {..}
+            // THIS SHOULD NOT NEED MUT butttt doesnt just use store, so we return it for now
+            | SwarmCmd::GetSwarmLocalState {..}
             | SwarmCmd::StartListening {..} => {
                 return Ok(Some(cmd))
             }
-            
             SwarmCmd::GetRecordKeysClosestToTarget {
                 key,
                 distance,
                 sender,
             } => {
-                let peers = self
-                    .swarm
-                    .behaviour()
-                    .kademlia
-                    .store()
+                let peers = store
                     .get_record_keys_closest_to_target(key.as_kbucket_key(), distance);
                 let _ = sender.send(peers);
             }
             SwarmCmd::GetLocalRecord { key, sender } => {
-                let record = self
-                    .swarm
-                    .behaviour()
-                    .kademlia
-                    .store()
+                let record = store
                     .get(&key)
                     .map(|rec| rec.into_owned());
                 let _ = sender.send(record);
             }
-          
             SwarmCmd::RecordStoreHasKey { key, sender } => {
-                let has_key = self
-                    .swarm
-                    .behaviour()
-                    .kademlia
-                    .store()
+                let has_key = store
                     .contains(&key);
                 let _ = sender.send(has_key);
-            }
-
-            SwarmCmd::GetSwarmLocalState(sender) => {
-                let current_state = SwarmLocalState {
-                    connected_peers: self.swarm.connected_peers().cloned().collect(),
-                    listeners: self.swarm.listeners().cloned().collect(),
-                };
-
-                sender
-                    .send(current_state)
-                    .map_err(|_| Error::InternalMsgChannelDropped)?;
             }
         }
         Ok(None)

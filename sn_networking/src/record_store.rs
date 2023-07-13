@@ -34,7 +34,7 @@ pub const REPLICATION_INTERVAL_LOWER_BOUND: Duration = Duration::from_secs(180);
 /// Max number of records a node can store
 const MAX_RECORDS_COUNT: usize = 2048;
 
-/// A `RecordStore` that stores records on disk.
+/// A `RecordStore` that stores records on disk.1
 pub struct DiskBackedRecordStore {
     /// The identity of the peer owning the store.
     local_key: KBucketKey<PeerId>,

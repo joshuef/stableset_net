@@ -425,9 +425,10 @@ impl SwarmDriver {
                 },
                 some_cmd = self.cmd_receiver.recv() => match some_cmd {
                     Some(cmd) => {
-                        let non_mut = self;
+                        let store = self.swarm.behaviour().kademlia.store();
+                        // let store_clone = store.clone();
 
-                        match non_mut.handle_immutable_cmd(cmd).await {
+                        match Self::handle_immutable_store_cmd(store, cmd).await {
                             Ok(None) => {
                                 info!("Immuta swarm handled");
                                 continue
