@@ -183,18 +183,12 @@ impl SwarmDriver {
     pub(crate) fn handle_cmd(&mut self, cmd: SwarmCmd) -> Result<(), Error> {
         info!("Handling SwarmCmd: {:?}", cmd);
         match cmd {
-            SwarmCmd::GetRecordKeysClosestToTarget {
-                key,
-                distance,
-                sender,
-            } => {
-                let peers = self
-                    .swarm
-                    .behaviour()
-                    .kademlia
-                    .store()
-                    .get_record_keys_closest_to_target(key.as_kbucket_key(), distance);
-                let _ = sender.send(peers);
+            SwarmCmd::GetAllLocalPeers { .. }
+            | SwarmCmd::GetRecordKeysClosestToTarget { .. }
+            | SwarmCmd::GetLocalRecord { .. }
+            | SwarmCmd::RecordStoreHasKey { .. } => {
+                trace!("Immutable SwarmCmd should have been handled already");
+                return Ok(());
             }
             SwarmCmd::AddKeysToReplicationFetcher { peer, keys, sender } => {
                 // check if we have any of the data before adding it.
@@ -242,16 +236,6 @@ impl SwarmDriver {
                 let query_id = self.swarm.behaviour_mut().kademlia.get_record(key);
                 let _ = self.pending_query.insert(query_id, sender);
             }
-            SwarmCmd::GetLocalRecord { key, sender } => {
-                let record = self
-                    .swarm
-                    .behaviour()
-                    .kademlia
-                    .store()
-                    .get(&key)
-                    .map(|rec| rec.into_owned());
-                let _ = sender.send(record);
-            }
             SwarmCmd::PutRecord { record, sender } => {
                 let request_id = self
                     .swarm
@@ -267,10 +251,6 @@ impl SwarmDriver {
                     .kademlia
                     .store_mut()
                     .put_verified(record)?;
-            }
-            SwarmCmd::RecordStoreHasKey { key, sender } => {
-                let has_key = self.swarm.behaviour().kademlia.store().contains(&key);
-                let _ = sender.send(has_key);
             }
 
             SwarmCmd::StartListening { addr, sender } => {
@@ -309,16 +289,6 @@ impl SwarmDriver {
                     .insert(query_id, (sender, Default::default()));
             }
 
-            SwarmCmd::GetAllLocalPeers { sender } => {
-                let mut all_peers: Vec<PeerId> = vec![];
-                for kbucket in self.swarm.behaviour_mut().kademlia.kbuckets() {
-                    for entry in kbucket.iter() {
-                        all_peers.push(entry.node.key.clone().into_preimage());
-                    }
-                }
-                all_peers.push(self.self_peer_id);
-                let _ = sender.send(all_peers);
-            }
             SwarmCmd::SendRequest { req, peer, sender } => {
                 // If `self` is the recipient, forward the request directly to our upper layer to
                 // be handled.
