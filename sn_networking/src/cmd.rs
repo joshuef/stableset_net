@@ -20,7 +20,7 @@ use sn_protocol::{
     messages::{Request, Response},
     NetworkAddress,
 };
-use std::collections::{BTreeSet, HashSet};
+use std::collections::HashSet;
 use tokio::sync::oneshot;
 
 use custom_debug::Debug;
@@ -133,7 +133,7 @@ impl SwarmDriver {
     /// it mayyy not be up to date, but it should be faster and prevent repeated blocking
     /// calls to the swarm
     pub(crate) fn handle_immutable_store_cmd(
-        local_peers: &BTreeSet<PeerId>,
+        local_peers: &Vec<PeerId>,
         store: &DiskBackedRecordStore,
         cmd: SwarmCmd,
     ) -> Result<Option<SwarmCmd>, Error> {
@@ -155,7 +155,7 @@ impl SwarmDriver {
                 return Ok(Some(cmd))
             }
             SwarmCmd::GetAllLocalPeers { sender } => {
-                let _ = sender.send(local_peers.iter().cloned().collect());
+                let _ = sender.send(local_peers.clone());
             }
             SwarmCmd::GetRecordKeysClosestToTarget {
                 key,
@@ -377,6 +377,23 @@ impl SwarmDriver {
             }
         }
         Ok(())
+    }
+
+    /// Update local peers stored on the SwarmDriver
+    /// Also logs the k-buckets information
+    ///
+    /// This should prevent having to dive into the swarm driver to get the local peers
+    pub(crate) fn update_local_peers(&mut self, changed_peer_id: &PeerId) {
+        let mut all_peers: Vec<PeerId> = vec![];
+        for kbucket in self.swarm.behaviour_mut().kademlia.kbuckets() {
+            for entry in kbucket.iter() {
+                all_peers.push(entry.node.key.clone().into_preimage());
+            }
+        }
+        all_peers.push(self.self_peer_id);
+
+        self.all_local_peers = all_peers;
+        self.log_kbuckets(&changed_peer_id);
     }
 
     /// Dials the given multiaddress. If address contains a peer ID, simultaneous

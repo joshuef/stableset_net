@@ -114,7 +114,7 @@ pub struct SwarmDriver {
     /// A list of the most recent peers we have dialed ourselves.
     dialed_peers: CircularVec<PeerId>,
     dead_peers: BTreeSet<PeerId>,
-    all_local_peers: BTreeSet<PeerId>,
+    all_local_peers: Vec<PeerId>,
     is_client: bool,
 }
 
@@ -397,7 +397,7 @@ impl SwarmDriver {
             dialed_peers: CircularVec::new(63),
             dead_peers: Default::default(),
             is_client,
-            all_local_peers: BTreeSet::new(),
+            all_local_peers: vec![],
         };
 
         Ok((
@@ -430,7 +430,7 @@ impl SwarmDriver {
                     Some(cmd) => {
                         let store = self.swarm.behaviour().kademlia.store();
                         let local_peers = self.all_local_peers();
-                        
+
                         match Self::handle_immutable_store_cmd(local_peers, store, cmd) {
                             Ok(None) => {
                                 info!("Immuta swarm handled");
@@ -455,7 +455,7 @@ impl SwarmDriver {
     }
 
     /// Return all local peers in the routing table
-    pub fn all_local_peers(&self) -> &BTreeSet<PeerId> {
+    pub fn all_local_peers(&self) -> &Vec<PeerId> {
         &self.all_local_peers
     }
 }
@@ -531,7 +531,7 @@ impl Network {
         self.get_closest_peers(key, false).await
     }
 
-    /// Returns all the PeerId from all the KBuckets from our local Routing Table
+    /// Returns all the local PeerId as per the last Kbucket update
     /// Also contains our own PeerId.
     pub async fn get_all_local_peers(&self) -> Result<Vec<PeerId>> {
         let (sender, receiver) = oneshot::channel();

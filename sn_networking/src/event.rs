@@ -280,8 +280,9 @@ impl SwarmDriver {
                             self.send_event(NetworkEvent::PeerRemoved(peer_id));
                         }
                         let _ = self.swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
-                        self.log_kbuckets(&peer_id);
                     }
+
+                    self.update_local_peers(&peer_id);
                 }
             }
             SwarmEvent::IncomingConnectionError { .. } => {}
@@ -436,18 +437,17 @@ impl SwarmDriver {
                     if self.dead_peers.remove(&peer) {
                         info!("A dead peer {peer:?} joined back with the same ID");
                     }
-                    self.log_kbuckets(&peer);
                     self.send_event(NetworkEvent::PeerAdded(peer));
                     let connected_peers = self.swarm.connected_peers().collect_vec().len();
-
                     info!("Connected peers: {connected_peers}");
                 }
 
                 if old_peer.is_some() {
                     info!("Evicted old peer on new peer join: {old_peer:?}");
                     self.send_event(NetworkEvent::PeerRemoved(peer));
-                    self.log_kbuckets(&peer);
                 }
+
+                self.update_local_peers(&peer);
             }
             KademliaEvent::InboundRequest {
                 request: InboundRequest::PutRecord { .. },
@@ -474,7 +474,7 @@ impl SwarmDriver {
         Ok(())
     }
 
-    fn log_kbuckets(&mut self, peer: &PeerId) {
+    pub(crate) fn log_kbuckets(&mut self, peer: &PeerId) {
         let distance = NetworkAddress::from_peer(self.self_peer_id)
             .distance(&NetworkAddress::from_peer(*peer));
         info!("Peer {peer:?} has a {:?} distance to us", distance.ilog2());
