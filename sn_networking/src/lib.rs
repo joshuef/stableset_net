@@ -427,11 +427,21 @@ impl SwarmDriver {
                     Some(cmd) => {
                         let non_mut = self;
 
-                        if let Err(err) = non_mut.handle_immutable_cmd(cmd).await {
-                            warn!("Error while handling cmd: {err}");
-                        }
-                        if let Err(err) = self.handle_cmd(cmd).await {
-                            warn!("Error while handling cmd: {err}");
+                        match non_mut.handle_immutable_cmd(cmd).await {
+                            Ok(None) => {
+                                info!("Immuta swarm handled");
+                                continue
+                            },
+                            Ok(Some(cmd)) => {
+
+                                if let Err(err) = self.handle_cmd(cmd).await {
+                                    warn!("Error while handling cmd: {err}");
+                                }
+                            }
+                            Err(err) => {
+                                warn!("Error while handling immutable SwarmCmd: {err}");
+
+                            }
                         }
                     },
                     None =>  continue,
