@@ -301,7 +301,7 @@ fn build_binaries(binaries_to_build: Vec<String>) -> Result<()> {
 
 /// Start the faucet from the provided bin_path and with the given bootstrap peer
 fn run_faucet(gen_multi_addr: String, bin_path: PathBuf) -> Result<()> {
-    let testnet = Testnet::configure().node_bin_path(bin_path).build()?;
+    let testnet = Testnet::configure().node_bin_path(bin_path.clone()).build()?;
     let launch_bin = testnet.node_bin_path;
 
     // server should write logs to a different log dir
@@ -319,7 +319,7 @@ fn run_faucet(gen_multi_addr: String, bin_path: PathBuf) -> Result<()> {
     args.push("--peer".to_string());
     args.push(gen_multi_addr);
     args.push("server".to_string());
-    testnet.launcher.launch(&launch_bin, args)?;
+    testnet.launcher.launch(&launch_bin, args, None)?;
     // The launch will immediately complete after fire the cmd out.
     // Have to wait some extra time to allow the faucet to be properly created and funded
     std::thread::sleep(std::time::Duration::from_secs(5));

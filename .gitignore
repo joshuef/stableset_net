@@ -23,3 +23,4 @@ settings.json
 bump_version_output
 
 heaptrack.*.gz
+flames/**/*.svg
