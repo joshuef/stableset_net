@@ -20,7 +20,7 @@ use sn_protocol::{
     messages::{Request, Response},
     NetworkAddress,
 };
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use tokio::sync::oneshot;
 
 use custom_debug::Debug;
@@ -133,7 +133,7 @@ impl SwarmDriver {
     /// it mayyy not be up to date, but it should be faster and prevent repeated blocking
     /// calls to the swarm
     pub(crate) fn handle_immutable_store_cmd(
-        &self,
+        local_peers: &BTreeSet<PeerId>,
         store: &DiskBackedRecordStore,
         cmd: SwarmCmd,
     ) -> Result<Option<SwarmCmd>, Error> {
@@ -155,8 +155,7 @@ impl SwarmDriver {
                 return Ok(Some(cmd))
             }
             SwarmCmd::GetAllLocalPeers { sender } => {
-                let all_peers = self.all_local_peers();
-                let _ = sender.send(all_peers);
+                let _ = sender.send(local_peers.iter().cloned().collect());
             }
             SwarmCmd::GetRecordKeysClosestToTarget {
                 key,

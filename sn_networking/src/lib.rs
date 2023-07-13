@@ -23,7 +23,6 @@ pub use self::{
     event::{MsgResponder, NetworkEvent},
 };
 
-use itertools::Itertools;
 use self::{
     circular_vec::CircularVec,
     cmd::SwarmCmd,
@@ -36,6 +35,7 @@ use self::{
     replication_fetcher::ReplicationFetcher,
 };
 use futures::{future::select_all, StreamExt};
+
 #[cfg(feature = "local-discovery")]
 use libp2p::mdns;
 use libp2p::{
@@ -430,8 +430,8 @@ impl SwarmDriver {
                     Some(cmd) => {
                         let store = self.swarm.behaviour().kademlia.store();
                         // let store_clone = store.clone();
-
-                        match self.handle_immutable_store_cmd(cmd) {
+                        let local_peers = self.all_local_peers();
+                        match Self::handle_immutable_store_cmd(local_peers, store, cmd) {
                             Ok(None) => {
                                 info!("Immuta swarm handled");
                                 continue
@@ -455,8 +455,8 @@ impl SwarmDriver {
     }
 
     /// Return all local peers in the routing table
-    pub fn all_local_peers(&self) -> Vec<PeerId> {
-        self.all_local_peers.iter().cloned().collect_vec()
+    pub fn all_local_peers(&self) -> &BTreeSet<PeerId> {
+        &self.all_local_peers
     }
 }
 
