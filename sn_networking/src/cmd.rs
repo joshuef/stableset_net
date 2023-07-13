@@ -7,9 +7,7 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 
 use super::{error::Error, MsgResponder, NetworkEvent, SwarmDriver};
-use crate::{
-    error::Result, multiaddr_pop_p2p, record_store::DiskBackedRecordStore, CLOSE_GROUP_SIZE,
-};
+use crate::{error::Result, multiaddr_pop_p2p, record_store::DiskBackedRecordStore};
 use libp2p::{
     kad::{store::RecordStore, KBucketDistance as Distance, Quorum, Record, RecordKey},
     swarm::{
@@ -48,11 +46,6 @@ pub enum SwarmCmd {
     GetClosestPeers {
         key: NetworkAddress,
         sender: oneshot::Sender<HashSet<PeerId>>,
-    },
-    // Get closest peers from the local RoutingTable
-    GetClosestLocalPeers {
-        key: NetworkAddress,
-        sender: oneshot::Sender<Vec<PeerId>>,
     },
     // Returns all the peers from all the k-buckets from the local Routing Table.
     // This includes our PeerId as well.
@@ -155,8 +148,6 @@ impl SwarmDriver {
             | SwarmCmd::SendRequest {..}
             | SwarmCmd::SendResponse {..}
             | SwarmCmd::GetClosestPeers {..}
-            // THIS SHOULD NOT NEED MUT
-            | SwarmCmd::GetClosestLocalPeers {..}
             // THIS SHOULD NOT NEED MUT
             | SwarmCmd::GetAllLocalPeers {..}
             // THIS SHOULD NOT NEED MUT butttt doesnt just use store, so we return it for now
@@ -315,22 +306,7 @@ impl SwarmDriver {
                     .pending_get_closest_peers
                     .insert(query_id, (sender, Default::default()));
             }
-            SwarmCmd::GetClosestLocalPeers { key, sender } => {
-                let key = key.as_kbucket_key();
-                // calls `kbuckets.closest_keys(key)` internally, which orders the peers by
-                // increasing distance
-                // Note it will return all peers, heance a chop down is required.
-                let closest_peers = self
-                    .swarm
-                    .behaviour_mut()
-                    .kademlia
-                    .get_closest_local_peers(&key)
-                    .map(|peer| peer.into_preimage())
-                    .take(CLOSE_GROUP_SIZE)
-                    .collect();
 
-                let _ = sender.send(closest_peers);
-            }
             SwarmCmd::GetAllLocalPeers { sender } => {
                 let mut all_peers: Vec<PeerId> = vec![];
                 for kbucket in self.swarm.behaviour_mut().kademlia.kbuckets() {

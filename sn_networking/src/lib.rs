@@ -523,21 +523,6 @@ impl Network {
         self.get_closest_peers(key, false).await
     }
 
-    /// Returns the closest peers to the given `NetworkAddress` that is fetched from the local
-    /// Routing Table. It is ordered by increasing distance of the peers
-    /// Note self peer_id is not included in the result.
-    pub async fn get_closest_local_peers(&self, key: &NetworkAddress) -> Result<Vec<PeerId>> {
-        let (sender, receiver) = oneshot::channel();
-        self.send_swarm_cmd(SwarmCmd::GetClosestLocalPeers {
-            key: key.clone(),
-            sender,
-        })?;
-
-        receiver
-            .await
-            .map_err(|_e| Error::InternalMsgChannelDropped)
-    }
-
     /// Returns all the PeerId from all the KBuckets from our local Routing Table
     /// Also contains our own PeerId.
     pub async fn get_all_local_peers(&self) -> Result<Vec<PeerId>> {
