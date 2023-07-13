@@ -133,6 +133,224 @@ pub struct SwarmLocalState {
 }
 
 impl SwarmDriver {
+    /// Returns the cmd if it cannot be processed immediately
+    pub(crate) async fn handle_immutable_cmd(&self, cmd: SwarmCmd) -> Result<Option<Cmd>, Error> {
+        match cmd {
+            SwarmCmd::GetRecordKeysClosestToTarget {
+                key,
+                distance,
+                sender,
+            } => {
+                let peers = self
+                    .swarm
+                    .behaviour()
+                    .kademlia
+                    .store()
+                    .get_record_keys_closest_to_target(key.as_kbucket_key(), distance);
+                let _ = sender.send(peers);
+            }
+            SwarmCmd::AddKeysToReplicationFetcher { peer, keys, sender } => {
+                // check if we have any of the data before adding it.
+                let existing_keys: HashSet<NetworkAddress> = self
+                    .swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .store_mut()
+                    .record_addresses();
+
+                // remove any keys that we already have from replication fetcher
+                self.replication_fetcher.remove_held_data(&existing_keys);
+
+                let non_existing_keys: Vec<NetworkAddress> = keys
+                    .iter()
+                    .filter(|key| !existing_keys.contains(key))
+                    .cloned()
+                    .collect();
+
+                let keys_to_fetch = self
+                    .replication_fetcher
+                    .add_keys_to_replicate_per_peer(peer, non_existing_keys);
+                let _ = sender.send(keys_to_fetch);
+            }
+            SwarmCmd::NotifyFetchResult {
+                peer,
+                key,
+                result,
+                sender,
+            } => {
+                let keys_to_fetch = self
+                    .replication_fetcher
+                    .notify_fetch_result(peer, key, result);
+                let _ = sender.send(keys_to_fetch);
+            }
+
+            SwarmCmd::SetRecordDistanceRange { distance } => {
+                self.swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .store_mut()
+                    .set_distance_range(distance);
+            }
+            SwarmCmd::GetNetworkRecord { key, sender } => {
+                let query_id = self.swarm.behaviour_mut().kademlia.get_record(key);
+                let _ = self.pending_query.insert(query_id, sender);
+            }
+            SwarmCmd::GetLocalRecord { key, sender } => {
+                let record = self
+                    .swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .store_mut()
+                    .get(&key)
+                    .map(|rec| rec.into_owned());
+                let _ = sender.send(record);
+            }
+            SwarmCmd::PutRecord { record, sender } => {
+                let request_id = self
+                    .swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .put_record(record, Quorum::All)?;
+                trace!("Sending record {request_id:?} to network");
+                let _ = self.pending_record_put.insert(request_id, sender);
+            }
+            SwarmCmd::PutLocalRecord { record } => {
+                self.swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .store_mut()
+                    .put_verified(record)?;
+            }
+            SwarmCmd::RecordStoreHasKey { key, sender } => {
+                let has_key = self
+                    .swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .store_mut()
+                    .contains(&key);
+                let _ = sender.send(has_key);
+            }
+
+            SwarmCmd::StartListening { addr, sender } => {
+                let _ = match self.swarm.listen_on(addr) {
+                    Ok(_) => sender.send(Ok(())),
+                    Err(e) => sender.send(Err(e.into())),
+                };
+            }
+            SwarmCmd::AddToRoutingTable {
+                peer_id,
+                peer_addr,
+                sender,
+            } => {
+                // TODO: This returns RoutingUpdate, but it doesn't implement `Debug`, so it's a hassle to return.
+                let _ = self
+                    .swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .add_address(&peer_id, peer_addr);
+                let _ = sender.send(Ok(()));
+            }
+            SwarmCmd::Dial { addr, sender } => {
+                let _ = match self.dial(addr) {
+                    Ok(_) => sender.send(Ok(())),
+                    Err(e) => sender.send(Err(e.into())),
+                };
+            }
+            SwarmCmd::GetClosestPeers { key, sender } => {
+                let query_id = self
+                    .swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .get_closest_peers(key.as_bytes());
+                let _ = self
+                    .pending_get_closest_peers
+                    .insert(query_id, (sender, Default::default()));
+            }
+            SwarmCmd::GetClosestLocalPeers { key, sender } => {
+                let key = key.as_kbucket_key();
+                // calls `kbuckets.closest_keys(key)` internally, which orders the peers by
+                // increasing distance
+                // Note it will return all peers, heance a chop down is required.
+                let closest_peers = self
+                    .swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .get_closest_local_peers(&key)
+                    .map(|peer| peer.into_preimage())
+                    .take(CLOSE_GROUP_SIZE)
+                    .collect();
+
+                let _ = sender.send(closest_peers);
+            }
+            SwarmCmd::GetAllLocalPeers { sender } => {
+                let mut all_peers: Vec<PeerId> = vec![];
+                for kbucket in self.swarm.behaviour_mut().kademlia.kbuckets() {
+                    for entry in kbucket.iter() {
+                        all_peers.push(entry.node.key.clone().into_preimage());
+                    }
+                }
+                all_peers.push(self.self_peer_id);
+                let _ = sender.send(all_peers);
+            }
+            SwarmCmd::SendRequest { req, peer, sender } => {
+                // If `self` is the recipient, forward the request directly to our upper layer to
+                // be handled.
+                // `self` then handles the request and sends a response back again to itself.
+                if peer == *self.swarm.local_peer_id() {
+                    trace!("Sending request to self");
+
+                    self.send_event(NetworkEvent::RequestReceived {
+                        req,
+                        channel: MsgResponder::FromSelf(sender),
+                    });
+                } else {
+                    let request_id = self
+                        .swarm
+                        .behaviour_mut()
+                        .request_response
+                        .send_request(&peer, req);
+                    trace!("Sending request {request_id:?} to peer {peer:?}");
+                    let _ = self.pending_requests.insert(request_id, sender);
+                }
+            }
+            SwarmCmd::SendResponse { resp, channel } => match channel {
+                // If the response is for `self`, send it directly through the oneshot channel.
+                MsgResponder::FromSelf(channel) => {
+                    trace!("Sending response to self");
+                    match channel {
+                        Some(channel) => {
+                            channel
+                                .send(Ok(resp))
+                                .map_err(|_| Error::InternalMsgChannelDropped)?;
+                        }
+                        None => {
+                            // responses that are not awaited at the call site must be handled
+                            // separately
+                            self.send_event(NetworkEvent::ResponseReceived { res: resp });
+                        }
+                    }
+                }
+                MsgResponder::FromPeer(channel) => {
+                    self.swarm
+                        .behaviour_mut()
+                        .request_response
+                        .send_response(channel, resp)
+                        .map_err(Error::OutgoingResponseDropped)?;
+                }
+            },
+            SwarmCmd::GetSwarmLocalState(sender) => {
+                let current_state = SwarmLocalState {
+                    connected_peers: self.swarm.connected_peers().cloned().collect(),
+                    listeners: self.swarm.listeners().cloned().collect(),
+                };
+
+                sender
+                    .send(current_state)
+                    .map_err(|_| Error::InternalMsgChannelDropped)?;
+            }
+        }
+        Ok(())
+    }
     pub(crate) async fn handle_cmd(&mut self, cmd: SwarmCmd) -> Result<(), Error> {
         info!("Handling SwarmCmd: {:?}", cmd);
         match cmd {

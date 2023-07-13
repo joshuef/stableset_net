@@ -425,6 +425,11 @@ impl SwarmDriver {
                 },
                 some_cmd = self.cmd_receiver.recv() => match some_cmd {
                     Some(cmd) => {
+                        let non_mut = self;
+
+                        if let Err(err) = non_mut.handle_immutable_cmd(cmd).await {
+                            warn!("Error while handling cmd: {err}");
+                        }
                         if let Err(err) = self.handle_cmd(cmd).await {
                             warn!("Error while handling cmd: {err}");
                         }
