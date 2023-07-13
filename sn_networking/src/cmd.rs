@@ -180,7 +180,7 @@ impl SwarmDriver {
         }
         Ok(None)
     }
-    pub(crate) async fn handle_cmd(&mut self, cmd: SwarmCmd) -> Result<(), Error> {
+    pub(crate) fn handle_cmd(&mut self, cmd: SwarmCmd) -> Result<(), Error> {
         info!("Handling SwarmCmd: {:?}", cmd);
         match cmd {
             SwarmCmd::GetRecordKeysClosestToTarget {

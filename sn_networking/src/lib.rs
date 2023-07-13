@@ -438,7 +438,7 @@ impl SwarmDriver {
                             },
                             Ok(Some(cmd)) => {
 
-                                if let Err(err) = self.handle_cmd(cmd).await {
+                                if let Err(err) = self.handle_cmd(cmd) {
                                     warn!("Error while handling cmd: {err}");
                                 }
                             }
