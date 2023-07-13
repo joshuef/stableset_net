@@ -23,6 +23,7 @@ pub use self::{
     event::{MsgResponder, NetworkEvent},
 };
 
+use itertools::Itertools;
 use self::{
     circular_vec::CircularVec,
     cmd::SwarmCmd,
@@ -113,6 +114,7 @@ pub struct SwarmDriver {
     /// A list of the most recent peers we have dialed ourselves.
     dialed_peers: CircularVec<PeerId>,
     dead_peers: BTreeSet<PeerId>,
+    all_local_peers: BTreeSet<PeerId>,
     is_client: bool,
 }
 
@@ -395,6 +397,7 @@ impl SwarmDriver {
             dialed_peers: CircularVec::new(63),
             dead_peers: Default::default(),
             is_client,
+            all_local_peers: BTreeSet::new(),
         };
 
         Ok((
@@ -428,7 +431,7 @@ impl SwarmDriver {
                         let store = self.swarm.behaviour().kademlia.store();
                         // let store_clone = store.clone();
 
-                        match Self::handle_immutable_store_cmd(store, cmd).await {
+                        match self.handle_immutable_store_cmd(cmd) {
                             Ok(None) => {
                                 info!("Immuta swarm handled");
                                 continue
@@ -449,6 +452,11 @@ impl SwarmDriver {
                 },
             }
         }
+    }
+
+    /// Return all local peers in the routing table
+    pub fn all_local_peers(&self) -> Vec<PeerId> {
+        self.all_local_peers.iter().cloned().collect_vec()
     }
 }
 

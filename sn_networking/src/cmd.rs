@@ -132,7 +132,8 @@ impl SwarmDriver {
     /// Handles store queries via a cloned instance.
     /// it mayyy not be up to date, but it should be faster and prevent repeated blocking
     /// calls to the swarm
-    pub(crate) async fn handle_immutable_store_cmd(
+    pub(crate) fn handle_immutable_store_cmd(
+        &self,
         store: &DiskBackedRecordStore,
         cmd: SwarmCmd,
     ) -> Result<Option<SwarmCmd>, Error> {
@@ -148,12 +149,14 @@ impl SwarmDriver {
             | SwarmCmd::SendRequest {..}
             | SwarmCmd::SendResponse {..}
             | SwarmCmd::GetClosestPeers {..}
-            // THIS SHOULD NOT NEED MUT
-            | SwarmCmd::GetAllLocalPeers {..}
             // THIS SHOULD NOT NEED MUT butttt doesnt just use store, so we return it for now
             | SwarmCmd::GetSwarmLocalState {..}
             | SwarmCmd::StartListening {..} => {
                 return Ok(Some(cmd))
+            }
+            SwarmCmd::GetAllLocalPeers { sender } => {
+                let all_peers = self.all_local_peers();
+                let _ = sender.send(all_peers);
             }
             SwarmCmd::GetRecordKeysClosestToTarget {
                 key,
