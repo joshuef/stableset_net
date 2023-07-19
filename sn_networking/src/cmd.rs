@@ -21,7 +21,7 @@ use sn_protocol::{
     NetworkAddress,
 };
 use std::collections::{HashMap, HashSet};
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot,mpsc};
 
 /// Commands to send to the Swarm
 #[allow(clippy::large_enum_variant)]
@@ -133,6 +133,7 @@ impl SwarmDriver {
     pub(crate) fn handle_cmd(
         &mut self,
         // swarm: &mut libp2p::Swarm<NodeBehaviour>,
+        event_sender: mpsc::Sender<NetworkEvent>,
         cmd: SwarmCmd,
         pending_get_closest_peers: &mut PendingGetClosest,
         pending_query: &mut HashMap<QueryId, oneshot::Sender<Result<Record>>>,
@@ -337,7 +338,7 @@ impl SwarmDriver {
                 if peer == *self.swarm.local_peer_id() {
                     trace!("Sending request to self");
 
-                    self.send_event(NetworkEvent::RequestReceived {
+                    Self::send_event(event_sender,NetworkEvent::RequestReceived {
                         req,
                         channel: MsgResponder::FromSelf(sender),
                     });
@@ -366,7 +367,7 @@ impl SwarmDriver {
                         None => {
                             // responses that are not awaited at the call site must be handled
                             // separately
-                            self.send_event(NetworkEvent::ResponseReceived { res: resp });
+                            Self::send_event(event_sender,NetworkEvent::ResponseReceived { res: resp });
                         }
                     }
                 }

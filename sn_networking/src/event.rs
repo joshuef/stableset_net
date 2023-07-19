@@ -33,7 +33,7 @@ use sn_protocol::{
     NetworkAddress,
 };
 use std::collections::{BTreeSet, HashMap, HashSet};
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, mpsc};
 use tracing::{info, warn};
 
 #[derive(NetworkBehaviour)]
@@ -130,6 +130,7 @@ impl SwarmDriver {
     pub(super) fn handle_swarm_events<EventError: std::error::Error>(
         swarm: &mut libp2p::Swarm<NodeBehaviour>,
         event: SwarmEvent<NodeEvent, EventError>,
+        event_sender: mpsc::Sender<NetworkEvent>,
         pending_query: &mut HashMap<QueryId, oneshot::Sender<Result<Record>>>,
         pending_record_put: &mut HashMap<QueryId, oneshot::Sender<Result<()>>>,
         pending_get_closest_peers: &mut PendingGetClosest,

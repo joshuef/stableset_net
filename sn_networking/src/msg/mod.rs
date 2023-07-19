@@ -32,7 +32,7 @@ impl SwarmDriver {
                     ..
                 } => {
                     trace!("Received request with id: {request_id:?}, req: {request:?}");
-                    self.send_event(NetworkEvent::RequestReceived {
+                    self.send_event(event_sender,NetworkEvent::RequestReceived {
                         req: request,
                         channel: MsgResponder::FromPeer(channel),
                     })
@@ -54,7 +54,7 @@ impl SwarmDriver {
                             None => {
                                 // responses that are not awaited at the call site must be handled
                                 // separately
-                                Self::send_event(NetworkEvent::ResponseReceived { res: response });
+                                Self::send_event(event_sender, NetworkEvent::ResponseReceived { res: response });
                             }
                         }
                     } else {

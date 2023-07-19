@@ -230,8 +230,7 @@ impl SwarmDriver {
 
     /// Sends an event after pushing it off thread so as to be non-blocking
     /// this is a wrapper around the `mpsc::Sender::send` call
-    fn send_event(&self, event: NetworkEvent) {
-        let event_sender = self.event_sender.clone();
+    fn send_event( event_sender: mpsc::Sender<NetworkEvent>,        event: NetworkEvent) {
         let capacity = event_sender.capacity();
 
         if capacity == 0 {
@@ -440,12 +439,13 @@ impl SwarmDriver {
 
         loop {
             let swarm = &mut self.swarm;
+            let event_sender = &mut self.event_sender.clone();
             tokio::select! {
                 swarm_event = self.swarm.select_next_some() => {
                     let start_time = Instant::now();
 
                     // TODO: refactor this out some
-                    let err = Self::handle_swarm_events(swarm, swarm_event, &mut pending_query, &mut pending_record_put, &mut pending_get_closest_peers, pending_requests, &mut dialed_peers, &mut dead_peers, self.is_local, self.is_client);
+                    let err = Self::handle_swarm_events(swarm, swarm_event,event_sender, &mut pending_query, &mut pending_record_put, &mut pending_get_closest_peers, pending_requests, &mut dialed_peers, &mut dead_peers, self.is_local, self.is_client);
 
                     if let Err(err) = err {
                         warn!("Error while handling swarm event: {err}");
@@ -456,7 +456,7 @@ impl SwarmDriver {
                     Some(cmd) => {
                         let start_time = Instant::now();
 
-                        if let Err(err) = self.handle_cmd(swarm, cmd, &mut pending_get_closest_peers, &mut pending_query) {
+                        if let Err(err) = self.handle_cmd(cmd, event_sender, &mut pending_get_closest_peers, &mut pending_query) {
                             warn!("Error while handling cmd: {err}");
                         }
                         debug!("cmd_receiver, elapsed: {:?}", start_time.elapsed());
