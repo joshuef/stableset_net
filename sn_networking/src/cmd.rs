@@ -7,9 +7,13 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 
 use super::{error::Error, MsgResponder, NetworkEvent, SwarmDriver};
-use crate::{error::Result, multiaddr_pop_p2p, PendingGetClosest, CLOSE_GROUP_SIZE, event::NodeBehaviour};
+use crate::{
+    error::Result, event::NodeBehaviour, multiaddr_pop_p2p, replication_fetcher, PendingGetClosest,
+    CLOSE_GROUP_SIZE,
+};
 use libp2p::{
     kad::{store::RecordStore, KBucketDistance as Distance, QueryId, Quorum, Record, RecordKey},
+    request_response::RequestId,
     swarm::{
         dial_opts::{DialOpts, PeerCondition},
         DialError,
@@ -131,13 +135,16 @@ pub struct SwarmLocalState {
 
 impl SwarmDriver {
     pub(crate) fn handle_cmd(
-        &mut self,
-        // swarm: &mut libp2p::Swarm<NodeBehaviour>,
+        // &mut self,
+        swarm: &mut libp2p::Swarm<NodeBehaviour>,
         cmd: SwarmCmd,
         event_sender: mpsc::Sender<NetworkEvent>,
         pending_get_closest_peers: &mut PendingGetClosest,
         pending_query: &mut HashMap<QueryId, oneshot::Sender<Result<Record>>>,
-        // pending_record_put: &mut HashMap<QueryId, oneshot::Sender<Result<()>> >,
+        replication_fetcher: &mut replication_fetcher::ReplicationFetcher,
+        pending_record_put: &mut HashMap<QueryId, oneshot::Sender<Result<()>>>,
+        pending_requests: &mut HashMap<RequestId, Option<oneshot::Sender<Result<Response>>>>,
+        our_peer_id: PeerId,
     ) -> Result<(), Error> {
         let start_time;
         // let start_time = std::time::Instant::now();
@@ -151,8 +158,7 @@ impl SwarmDriver {
                 the_cmd = "GetRecordKeysClosestToTarget";
                 start_time = std::time::Instant::now();
 
-                let peers = self
-                    .swarm
+                let peers = swarm
                     .behaviour_mut()
                     .kademlia
                     .store_mut()
@@ -163,15 +169,14 @@ impl SwarmDriver {
                 the_cmd = "AddKeysToReplicationFetcher";
                 start_time = std::time::Instant::now();
                 // check if we have any of the data before adding it.
-                let existing_keys: HashSet<NetworkAddress> = self
-                    .swarm
+                let existing_keys: HashSet<NetworkAddress> = swarm
                     .behaviour_mut()
                     .kademlia
                     .store_mut()
                     .record_addresses();
 
                 // remove any keys that we already have from replication fetcher
-                self.replication_fetcher.remove_held_data(&existing_keys);
+                replication_fetcher.remove_held_data(&existing_keys);
 
                 let non_existing_keys: Vec<NetworkAddress> = keys
                     .iter()
@@ -179,9 +184,8 @@ impl SwarmDriver {
                     .cloned()
                     .collect();
 
-                let keys_to_fetch = self
-                    .replication_fetcher
-                    .add_keys_to_replicate_per_peer(peer, non_existing_keys);
+                let keys_to_fetch =
+                    replication_fetcher.add_keys_to_replicate_per_peer(peer, non_existing_keys);
                 let _ = sender.send(keys_to_fetch);
             }
             SwarmCmd::NotifyFetchResult {
@@ -192,16 +196,14 @@ impl SwarmDriver {
             } => {
                 the_cmd = "NotifyFetchResult";
                 start_time = std::time::Instant::now();
-                let keys_to_fetch = self
-                    .replication_fetcher
-                    .notify_fetch_result(peer, key, result);
+                let keys_to_fetch = replication_fetcher.notify_fetch_result(peer, key, result);
                 let _ = sender.send(keys_to_fetch);
             }
 
             SwarmCmd::SetRecordDistanceRange { distance } => {
                 the_cmd = "SetRecordDistanceRange";
                 start_time = std::time::Instant::now();
-                self.swarm
+                swarm
                     .behaviour_mut()
                     .kademlia
                     .store_mut()
@@ -211,14 +213,13 @@ impl SwarmDriver {
                 the_cmd = "GetNetworkRecord";
                 start_time = std::time::Instant::now();
                 info!("Here elapsed: {:?}", start_time.elapsed());
-                let query_id = self.swarm.behaviour_mut().kademlia.get_record(key);
+                let query_id = swarm.behaviour_mut().kademlia.get_record(key);
                 let _ = pending_query.insert(query_id, sender);
             }
             SwarmCmd::GetLocalRecord { key, sender } => {
                 the_cmd = "GetLocalRecord";
                 start_time = std::time::Instant::now();
-                let record = self
-                    .swarm
+                let record = swarm
                     .behaviour_mut()
                     .kademlia
                     .store_mut()
@@ -229,18 +230,17 @@ impl SwarmDriver {
             SwarmCmd::PutRecord { record, sender } => {
                 the_cmd = "PutRecord";
                 start_time = std::time::Instant::now();
-                let request_id = self
-                    .swarm
+                let request_id = swarm
                     .behaviour_mut()
                     .kademlia
                     .put_record(record, Quorum::All)?;
                 trace!("Sending record {request_id:?} to network");
-                let _ = self.pending_record_put.insert(request_id, sender);
+                let _ = pending_record_put.insert(request_id, sender);
             }
             SwarmCmd::PutLocalRecord { record } => {
                 the_cmd = "PutLocalRecord";
                 start_time = std::time::Instant::now();
-                self.swarm
+                swarm
                     .behaviour_mut()
                     .kademlia
                     .store_mut()
@@ -249,19 +249,14 @@ impl SwarmDriver {
             SwarmCmd::RecordStoreHasKey { key, sender } => {
                 the_cmd = "RecordStoreHasKey";
                 start_time = std::time::Instant::now();
-                let has_key = self
-                    .swarm
-                    .behaviour_mut()
-                    .kademlia
-                    .store_mut()
-                    .contains(&key);
+                let has_key = swarm.behaviour_mut().kademlia.store_mut().contains(&key);
                 let _ = sender.send(has_key);
             }
 
             SwarmCmd::StartListening { addr, sender } => {
                 the_cmd = "StartListening";
                 start_time = std::time::Instant::now();
-                let _ = match self.swarm.listen_on(addr) {
+                let _ = match swarm.listen_on(addr) {
                     Ok(_) => sender.send(Ok(())),
                     Err(e) => sender.send(Err(e.into())),
                 };
@@ -274,8 +269,7 @@ impl SwarmDriver {
                 the_cmd = "AddToRoutingTable";
                 start_time = std::time::Instant::now();
                 // TODO: This returns RoutingUpdate, but it doesn't implement `Debug`, so it's a hassle to return.
-                let _ = self
-                    .swarm
+                let _ = swarm
                     .behaviour_mut()
                     .kademlia
                     .add_address(&peer_id, peer_addr);
@@ -284,7 +278,7 @@ impl SwarmDriver {
             SwarmCmd::Dial { addr, sender } => {
                 the_cmd = "Dial";
                 start_time = std::time::Instant::now();
-                let _ = match Self::dial(&mut self.swarm, addr) {
+                let _ = match Self::dial(swarm, addr) {
                     Ok(_) => sender.send(Ok(())),
                     Err(e) => sender.send(Err(e.into())),
                 };
@@ -292,8 +286,7 @@ impl SwarmDriver {
             SwarmCmd::GetClosestPeers { key, sender } => {
                 the_cmd = "GetClosestPeers";
                 start_time = std::time::Instant::now();
-                let query_id = self
-                    .swarm
+                let query_id = swarm
                     .behaviour_mut()
                     .kademlia
                     .get_closest_peers(key.as_bytes());
@@ -306,8 +299,7 @@ impl SwarmDriver {
                 // calls `kbuckets.closest_keys(key)` internally, which orders the peers by
                 // increasing distance
                 // Note it will return all peers, heance a chop down is required.
-                let closest_peers = self
-                    .swarm
+                let closest_peers = swarm
                     .behaviour_mut()
                     .kademlia
                     .get_closest_local_peers(&key)
@@ -321,12 +313,12 @@ impl SwarmDriver {
                 the_cmd = "GetAllLocalPeers";
                 start_time = std::time::Instant::now();
                 let mut all_peers: Vec<PeerId> = vec![];
-                for kbucket in self.swarm.behaviour_mut().kademlia.kbuckets() {
+                for kbucket in swarm.behaviour_mut().kademlia.kbuckets() {
                     for entry in kbucket.iter() {
                         all_peers.push(entry.node.key.clone().into_preimage());
                     }
                 }
-                all_peers.push(self.self_peer_id);
+                all_peers.push(our_peer_id);
                 let _ = sender.send(all_peers);
             }
             SwarmCmd::SendRequest { req, peer, sender } => {
@@ -335,7 +327,7 @@ impl SwarmDriver {
                 // If `self` is the recipient, forward the request directly to our upper layer to
                 // be handled.
                 // `self` then handles the request and sends a response back again to itself.
-                if peer == *self.swarm.local_peer_id() {
+                if peer == *swarm.local_peer_id() {
                     trace!("Sending request to self");
 
                     Self::send_event(
@@ -346,13 +338,12 @@ impl SwarmDriver {
                         },
                     );
                 } else {
-                    let request_id = self
-                        .swarm
+                    let request_id = swarm
                         .behaviour_mut()
                         .request_response
                         .send_request(&peer, req);
                     trace!("Sending request {request_id:?} to peer {peer:?}");
-                    let _ = self.pending_requests.insert(request_id, sender);
+                    let _ = pending_requests.insert(request_id, sender);
                 }
             }
             SwarmCmd::SendResponse { resp, channel } => match channel {
@@ -380,7 +371,7 @@ impl SwarmDriver {
                 MsgResponder::FromPeer(channel) => {
                     the_cmd = "SendResponse (frompeer)";
                     start_time = std::time::Instant::now();
-                    self.swarm
+                    swarm
                         .behaviour_mut()
                         .request_response
                         .send_response(channel, resp)
@@ -391,8 +382,8 @@ impl SwarmDriver {
                 the_cmd = "GetSwarmLocalState";
                 start_time = std::time::Instant::now();
                 let current_state = SwarmLocalState {
-                    connected_peers: self.swarm.connected_peers().cloned().collect(),
-                    listeners: self.swarm.listeners().cloned().collect(),
+                    connected_peers: swarm.connected_peers().cloned().collect(),
+                    listeners: swarm.listeners().cloned().collect(),
                 };
 
                 sender
@@ -411,7 +402,10 @@ impl SwarmDriver {
 
     /// Dials the given multiaddress. If address contains a peer ID, simultaneous
     /// dials to that peer are prevented.
-    pub(crate) fn dial(swarm: &mut Swarm<NodeBehaviour>, mut addr: Multiaddr) -> Result<(), DialError> {
+    pub(crate) fn dial(
+        swarm: &mut Swarm<NodeBehaviour>,
+        mut addr: Multiaddr,
+    ) -> Result<(), DialError> {
         debug!(%addr, "Dialing manually");
 
         let peer_id = multiaddr_pop_p2p(&mut addr);

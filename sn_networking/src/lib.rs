@@ -114,7 +114,7 @@ pub struct SwarmDriver {
     pending_requests: HashMap<RequestId, Option<oneshot::Sender<Result<Response>>>>,
     // pending_query: HashMap<QueryId, oneshot::Sender<Result<Record>>>,
     pending_record_put: HashMap<QueryId, oneshot::Sender<Result<()>>>,
-    replication_fetcher: ReplicationFetcher,
+    // replication_fetcher: ReplicationFetcher,
     is_local: bool,
     /// A list of the most recent peers we have dialed ourselves.
     // dialed_peers: CircularVec<PeerId>,
@@ -391,7 +391,7 @@ impl SwarmDriver {
             pending_requests: Default::default(),
             // pending_query: Default::default(),
             pending_record_put: Default::default(),
-            replication_fetcher: Default::default(),
+            // replication_fetcher: Default::default(),
             is_local: local,
             // We use 63 here, as in practice the capactiy will be rounded to the nearest 2^(n-1).
             // Source: https://users.rust-lang.org/t/the-best-ring-buffer-library/58489/8
@@ -434,6 +434,9 @@ impl SwarmDriver {
         let mut pending_query = HashMap::default();
         let mut pending_record_put = HashMap::default();
         let mut pending_requests = HashMap::default();
+
+        // Cmd handler only
+        let mut replication_fetcher = Default::default();
         // let mut pending_requests = BTreeSet::default();
         // dead_peers: BTreeSet<PeerId>,
 
@@ -456,7 +459,7 @@ impl SwarmDriver {
                     Some(cmd) => {
                         let start_time = Instant::now();
 
-                        if let Err(err) = self.handle_cmd(cmd, event_sender, &mut pending_get_closest_peers, &mut pending_query) {
+                        if let Err(err) = Self::handle_cmd(swarm, cmd, event_sender, &mut pending_get_closest_peers, &mut pending_query, &mut replication_fetcher, &mut pending_record_put, &mut pending_requests, self.self_peer_id) {
                             warn!("Error while handling cmd: {err}");
                         }
                         debug!("cmd_receiver, elapsed: {:?}", start_time.elapsed());
