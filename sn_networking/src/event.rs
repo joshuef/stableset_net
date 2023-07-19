@@ -12,17 +12,17 @@ use super::{
     SwarmDriver,
 };
 use crate::{
-    multiaddr_is_global, multiaddr_strip_p2p, PendingGetClosest, CLOSE_GROUP_SIZE,
-    IDENTIFY_AGENT_STR, circular_vec::CircularVec,
+    circular_vec::CircularVec, multiaddr_is_global, multiaddr_strip_p2p, PendingGetClosest,
+    CLOSE_GROUP_SIZE, IDENTIFY_AGENT_STR,
 };
 use itertools::Itertools;
 #[cfg(feature = "local-discovery")]
 use libp2p::mdns;
 use libp2p::{
     autonat::{self, NatStatus},
-    kad::{GetRecordOk, InboundRequest, Kademlia, KademliaEvent, QueryResult, Record, K_VALUE},
+    kad::{GetRecordOk, InboundRequest, Kademlia, KademliaEvent, QueryResult, QueryId, Record, K_VALUE},
     multiaddr::Protocol,
-    request_response::{self, ResponseChannel as PeerResponseChannel},
+    request_response::{self, ResponseChannel as PeerResponseChannel, RequestId},
     swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent},
     Multiaddr, PeerId,
 };
@@ -30,7 +30,7 @@ use sn_protocol::{
     messages::{Request, Response},
     NetworkAddress,
 };
-use std::collections::{HashSet, BTreeSet};
+use std::collections::{BTreeSet, HashSet, HashMap};
 use tokio::sync::oneshot;
 use tracing::{info, warn};
 
@@ -128,11 +128,14 @@ impl SwarmDriver {
     pub(super) fn handle_swarm_events<EventError: std::error::Error>(
         swarm: &mut libp2p::Swarm<NodeBehaviour>,
         event: SwarmEvent<NodeEvent, EventError>,
+        pending_query: &mut HashMap<QueryId, oneshot::Sender<Result<Record>>>,
+        pending_record_put: &mut HashMap<QueryId, oneshot::Sender<Result<()>>>,
         pending_get_closest_peers: &mut PendingGetClosest,
+        pending_requests: &mut HashMap<RequestId, Option<oneshot::Sender<Result<Response>>>>,
         dialed_peers: &mut CircularVec<PeerId>,
         dead_peers: &mut BTreeSet<PeerId>,
-        is_local: bool, 
-        is_client: bool
+        is_local: bool,
+        is_client: bool,
     ) -> Result<()> {
         let start_time;
         let the_event;
@@ -143,7 +146,7 @@ impl SwarmDriver {
                 the_event = "MsgReceived";
                 start_time = std::time::Instant::now();
                 info!("Actually starting msg received handling");
-                if let Err(e) = self.handle_msg(event) {
+                if let Err(e) = Self::handle_msg(event, pending_requests) {
                     warn!("MsgReceivedError: {e:?}");
                 }
                 info!("Actually ending msg received handling");
@@ -151,7 +154,14 @@ impl SwarmDriver {
             SwarmEvent::Behaviour(NodeEvent::Kademlia(kad_event)) => {
                 the_event = "kad";
                 start_time = std::time::Instant::now();
-                Self::handle_kad_event(kad_event, pending_get_closest_peers, dead_peers)?;
+                Self::handle_kad_event(
+                    swarm,
+                    kad_event,
+                    pending_get_closest_peers,
+                    pending_query,
+                    pending_record_put,
+                    dead_peers,
+                )?;
             }
             SwarmEvent::Behaviour(NodeEvent::Identify(iden)) => {
                 the_event = "identify";
@@ -380,9 +390,12 @@ impl SwarmDriver {
     }
 
     fn handle_kad_event(
+        swarm: &mut libp2p::Swarm<NodeBehaviour>,
         kad_event: KademliaEvent,
         pending_get_closest_peers: &mut PendingGetClosest,
-        dead_peers: &mut BTreeSet<PeerId>
+        pending_query: &mut HashMap<QueryId, oneshot::Sender<Result<Record>>>,
+        pending_record_put: &mut HashMap<QueryId, oneshot::Sender<Result<()>>>,
+        dead_peers: &mut BTreeSet<PeerId>,
     ) -> Result<()> {
         match kad_event {
             ref event @ KademliaEvent::OutboundQueryProgressed {
@@ -422,7 +435,7 @@ impl SwarmDriver {
                 step,
             } => {
                 trace!("PutRecord task {id:?} returned, {stats:?} - {step:?}",);
-                if let Some(sender) = self.pending_record_put.remove(&id) {
+                if let Some(sender) = pending_record_put.remove(&id) {
                     match put_record_res {
                         Ok(put_record_ok) => {
                             trace!(
@@ -449,7 +462,7 @@ impl SwarmDriver {
                 stats,
                 step,
             } => {
-                if let Some(sender) = self.pending_query.remove(&id) {
+                if let Some(sender) = pending_query.remove(&id) {
                     trace!(
                         "Query task {id:?} returned with record {:?} from peer {:?}, {stats:?} - {step:?}",
                         peer_record.record.key,
@@ -469,7 +482,7 @@ impl SwarmDriver {
                 warn!("Query task {id:?} failed to get record with error: {err:?}, {stats:?} - {step:?}");
                 if step.last {
                     // To avoid the caller wait forever on a non-existing entry
-                    if let Some(sender) = self.pending_query.remove(&id) {
+                    if let Some(sender) = pending_query.remove(&id) {
                         sender
                             .send(Err(Error::RecordNotFound))
                             .map_err(|_| Error::InternalMsgChannelDropped)?;

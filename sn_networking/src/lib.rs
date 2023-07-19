@@ -45,10 +45,14 @@ use libp2p::{
     },
     multiaddr::Protocol,
     request_response::{self, Config as RequestResponseConfig, ProtocolSupport, RequestId},
-    swarm::{behaviour::toggle::Toggle, StreamProtocol, Swarm, SwarmBuilder, SwarmEvent, NetworkBehaviour},
+    swarm::{
+        behaviour::toggle::Toggle, NetworkBehaviour, StreamProtocol, Swarm, SwarmBuilder,
+        SwarmEvent,
+    },
     // swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent},
-
-    Multiaddr, PeerId, Transport,
+    Multiaddr,
+    PeerId,
+    Transport,
 };
 use rand::Rng;
 use sn_protocol::{
@@ -108,7 +112,7 @@ pub struct SwarmDriver {
     event_sender: mpsc::Sender<NetworkEvent>,
     // pending_get_closest_peers: PendingGetClosest,
     pending_requests: HashMap<RequestId, Option<oneshot::Sender<Result<Response>>>>,
-    pending_query: HashMap<QueryId, oneshot::Sender<Result<Record>>>,
+    // pending_query: HashMap<QueryId, oneshot::Sender<Result<Record>>>,
     pending_record_put: HashMap<QueryId, oneshot::Sender<Result<()>>>,
     replication_fetcher: ReplicationFetcher,
     is_local: bool,
@@ -386,7 +390,7 @@ impl SwarmDriver {
             event_sender: network_event_sender,
             // pending_get_closest_peers: Default::default(),
             pending_requests: Default::default(),
-            pending_query: Default::default(),
+            // pending_query: Default::default(),
             pending_record_put: Default::default(),
             replication_fetcher: Default::default(),
             is_local: local,
@@ -428,16 +432,22 @@ impl SwarmDriver {
         // /// A list of the most recent peers we have dialed ourselves.
         let mut dialed_peers = CircularVec::new(63);
         let mut dead_peers = BTreeSet::default();
+        let mut pending_query = HashMap::default();
+        let mut pending_record_put = HashMap::default();
+        let mut pending_requests = HashMap::default();
+        // let mut pending_requests = BTreeSet::default();
         // dead_peers: BTreeSet<PeerId>,
 
         loop {
+            let swarm = &mut self.swarm;
             tokio::select! {
                 swarm_event = self.swarm.select_next_some() => {
                     let start_time = Instant::now();
 
                     // TODO: refactor this out some
-                    let swarm = &mut self.swarm;
-                    if let Err(err) = Self::handle_swarm_events(swarm, swarm_event, &mut pending_get_closest_peers, &mut dialed_peers, &mut dead_peers, self.is_local, self.is_client) {
+                    if err = Self::handle_swarm_events(swarm, swarm_event, &mut pending_query, &mut pending_record_put, &mut pending_get_closest_peers, pending_requests, &mut dialed_peers, &mut dead_peers, self.is_local, self.is_client);
+
+                    if let Err(err) = err {
                         warn!("Error while handling swarm event: {err}");
                     }
                     debug!("swarm_event, elapsed: {:?}", start_time.elapsed());
@@ -446,7 +456,7 @@ impl SwarmDriver {
                     Some(cmd) => {
                         let start_time = Instant::now();
 
-                        if let Err(err) = self.handle_cmd(cmd, &mut pending_get_closest_peers) {
+                        if let Err(err) = self.handle_cmd(swarm, cmd, &mut pending_get_closest_peers, &mut pending_query) {
                             warn!("Error while handling cmd: {err}");
                         }
                         debug!("cmd_receiver, elapsed: {:?}", start_time.elapsed());

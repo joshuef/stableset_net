@@ -132,8 +132,11 @@ pub struct SwarmLocalState {
 impl SwarmDriver {
     pub(crate) fn handle_cmd(
         &mut self,
+        // swarm: &mut libp2p::Swarm<NodeBehaviour>,
         cmd: SwarmCmd,
         pending_get_closest_peers: &mut PendingGetClosest,
+        pending_query: &mut HashMap<QueryId, oneshot::Sender<Result<Record>>>,
+        // pending_record_put: &mut HashMap<QueryId, oneshot::Sender<Result<()>> >,
     ) -> Result<(), Error> {
         let start_time;
         // let start_time = std::time::Instant::now();
@@ -208,7 +211,7 @@ impl SwarmDriver {
                 start_time = std::time::Instant::now();
                 info!("Here elapsed: {:?}", start_time.elapsed());
                 let query_id = self.swarm.behaviour_mut().kademlia.get_record(key);
-                let _ = self.pending_query.insert(query_id, sender);
+                let _ = pending_query.insert(query_id, sender);
             }
             SwarmCmd::GetLocalRecord { key, sender } => {
                 the_cmd = "GetLocalRecord";
