@@ -13,7 +13,7 @@ use super::{
 };
 use crate::{
     multiaddr_is_global, multiaddr_strip_p2p, PendingGetClosest, CLOSE_GROUP_SIZE,
-    IDENTIFY_AGENT_STR,
+    IDENTIFY_AGENT_STR, circular_vec::CircularVec,
 };
 use itertools::Itertools;
 #[cfg(feature = "local-discovery")]
@@ -124,6 +124,70 @@ pub enum NetworkEvent {
 }
 
 impl SwarmDriver {
+    /// Handle Identify events
+    pub(super) fn handle_identify_event(behaviour_mut: &mut NetworkBehaviour, identify_event: libp2p::identify::Event, pending_get_closest_peers: &mut PendingGetClosest, dialed_peers: CircularVec<PeerId>, is_local: bool) {
+        let start_time;
+        let the_event;
+
+
+            match *identify_event {
+                libp2p::identify::Event::Received { peer_id, info } => {
+                    debug!(%peer_id, ?info, "identify: received info");
+
+                    // If we are not local, we care only for peers that we dialed and thus are reachable.
+                    if (is_local || dialed_peers.contains(&peer_id))
+                        && info.agent_version.starts_with(IDENTIFY_AGENT_STR)
+                    {
+                        let addrs = match is_local {
+                            true => info.listen_addrs,
+                            // If we're not in local mode, only add globally reachable addresses
+                            false => info
+                                .listen_addrs
+                                .into_iter()
+                                .filter(multiaddr_is_global)
+                                .collect(),
+                        };
+                        // Strip the `/p2p/...` part of the multiaddresses
+                        let addrs: Vec<_> = addrs
+                            .into_iter()
+                            .map(|addr| multiaddr_strip_p2p(&addr))
+                            // And deduplicate the list
+                            .unique()
+                            .collect();
+
+                        debug!(%peer_id, ?addrs, "identify: adding addresses to routing table");
+                        for multiaddr in addrs.clone() {
+                            let _routing_update = self
+                                .swarm
+                                .behaviour_mut()
+                                .kademlia
+                                .add_address(&peer_id, multiaddr);
+                        }
+
+                        // If the peer supports AutoNAT, add it as server
+                        if info.protocols.iter().any(|protocol| {
+                            protocol.to_string().starts_with("/libp2p/autonat/")
+                        }) {
+                            let a = &mut self.swarm.behaviour_mut().autonat;
+                            // It could be that we are on a local network and have AutoNAT disabled.
+                            if let Some(autonat) = a.as_mut() {
+                                for multiaddr in addrs {
+                                    autonat.add_server(peer_id, Some(multiaddr));
+                                }
+                            }
+                        }
+                    }
+                }
+                libp2p::identify::Event::Sent { .. } => trace!("identify: {iden:?}"),
+                libp2p::identify::Event::Pushed { .. } => trace!("identify: {iden:?}"),
+                libp2p::identify::Event::Error { .. } => trace!("identify: {iden:?}"),
+            }
+
+            trace!("Swarm event {the_event:?} took: {:?}", start_time.elapsed());
+
+            Ok(())
+        
+    }
     // Handle `SwarmEvents`
     pub(super) fn handle_swarm_events<EventError: std::error::Error>(
         &mut self,
@@ -149,62 +213,7 @@ impl SwarmDriver {
                 start_time = std::time::Instant::now();
                 self.handle_kad_event(kad_event, pending_get_closest_peers)?;
             }
-            SwarmEvent::Behaviour(NodeEvent::Identify(iden)) => {
-                the_event = "identify";
-                start_time = std::time::Instant::now();
-                match *iden {
-                    libp2p::identify::Event::Received { peer_id, info } => {
-                        debug!(%peer_id, ?info, "identify: received info");
-
-                        // If we are not local, we care only for peers that we dialed and thus are reachable.
-                        if (self.local || self.dialed_peers.contains(&peer_id))
-                            && info.agent_version.starts_with(IDENTIFY_AGENT_STR)
-                        {
-                            let addrs = match self.local {
-                                true => info.listen_addrs,
-                                // If we're not in local mode, only add globally reachable addresses
-                                false => info
-                                    .listen_addrs
-                                    .into_iter()
-                                    .filter(multiaddr_is_global)
-                                    .collect(),
-                            };
-                            // Strip the `/p2p/...` part of the multiaddresses
-                            let addrs: Vec<_> = addrs
-                                .into_iter()
-                                .map(|addr| multiaddr_strip_p2p(&addr))
-                                // And deduplicate the list
-                                .unique()
-                                .collect();
-
-                            debug!(%peer_id, ?addrs, "identify: adding addresses to routing table");
-                            for multiaddr in addrs.clone() {
-                                let _routing_update = self
-                                    .swarm
-                                    .behaviour_mut()
-                                    .kademlia
-                                    .add_address(&peer_id, multiaddr);
-                            }
-
-                            // If the peer supports AutoNAT, add it as server
-                            if info.protocols.iter().any(|protocol| {
-                                protocol.to_string().starts_with("/libp2p/autonat/")
-                            }) {
-                                let a = &mut self.swarm.behaviour_mut().autonat;
-                                // It could be that we are on a local network and have AutoNAT disabled.
-                                if let Some(autonat) = a.as_mut() {
-                                    for multiaddr in addrs {
-                                        autonat.add_server(peer_id, Some(multiaddr));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    libp2p::identify::Event::Sent { .. } => trace!("identify: {iden:?}"),
-                    libp2p::identify::Event::Pushed { .. } => trace!("identify: {iden:?}"),
-                    libp2p::identify::Event::Error { .. } => trace!("identify: {iden:?}"),
-                }
-            }
+            
             #[cfg(feature = "local-discovery")]
             SwarmEvent::Behaviour(NodeEvent::Mdns(mdns_event)) => match *mdns_event {
                 mdns::Event::Discovered(list) => {

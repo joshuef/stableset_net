@@ -45,7 +45,9 @@ use libp2p::{
     },
     multiaddr::Protocol,
     request_response::{self, Config as RequestResponseConfig, ProtocolSupport, RequestId},
-    swarm::{behaviour::toggle::Toggle, StreamProtocol, Swarm, SwarmBuilder},
+    swarm::{behaviour::toggle::Toggle, StreamProtocol, Swarm, SwarmBuilder, SwarmEvent, NetworkBehaviour},
+    // swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent},
+
     Multiaddr, PeerId, Transport,
 };
 use rand::Rng;
@@ -111,7 +113,7 @@ pub struct SwarmDriver {
     replication_fetcher: ReplicationFetcher,
     local: bool,
     /// A list of the most recent peers we have dialed ourselves.
-    dialed_peers: CircularVec<PeerId>,
+    // dialed_peers: CircularVec<PeerId>,
     dead_peers: BTreeSet<PeerId>,
     is_client: bool,
 }
@@ -392,7 +394,7 @@ impl SwarmDriver {
             // Source: https://users.rust-lang.org/t/the-best-ring-buffer-library/58489/8
             // 63 will mean at least 63 most recent peers we have dialed, which should be allow for enough time for the
             // `identify` protocol to kick in and get them in the routing table.
-            dialed_peers: CircularVec::new(63),
+            // dialed_peers: CircularVec::new(63),
             dead_peers: Default::default(),
             is_client,
         };
@@ -424,14 +426,17 @@ impl SwarmDriver {
         // replication_fetcher: ReplicationFetcher,
         // local: bool,
         // /// A list of the most recent peers we have dialed ourselves.
-        // dialed_peers: CircularVec<PeerId>,
+        let mut dialed_peers = CircularVec::new(63);
         // dead_peers: BTreeSet<PeerId>,
 
         loop {
             tokio::select! {
                 swarm_event = self.swarm.select_next_some() => {
                     let start_time = Instant::now();
-                    if let Err(err) = self.handle_swarm_events(swarm_event, &mut pending_get_closest_peers) {
+
+                    // TODO: refactor this out some
+
+                    if let Err(err) = self.handle_swarm_events(swarm_event, &mut pending_get_closest_peers, &mut dialed_peers) {
                         warn!("Error while handling swarm event: {err}");
                     }
                     debug!("swarm_event, elapsed: {:?}", start_time.elapsed());
