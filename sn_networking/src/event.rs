@@ -127,7 +127,7 @@ impl SwarmDriver {
         event: SwarmEvent<NodeEvent, EventError>,
     ) -> Result<()> {
         let start_time = std::time::Instant::now();
-        let mut the_event = "something";
+        let the_event;
         let span = info_span!("Handling a swarm event");
         let _ = span.enter();
         match event {
@@ -215,6 +215,8 @@ impl SwarmDriver {
                     }
                 }
                 mdns::Event::Expired(peer) => {
+                    the_event = "mdns";
+
                     debug!("mdns peer {peer:?} expired");
                 }
             },
@@ -242,7 +244,10 @@ impl SwarmDriver {
 
                 info!("Local node is listening on {address:?}");
             }
-            SwarmEvent::IncomingConnection { .. } => {}
+            SwarmEvent::IncomingConnection { .. } => {
+                the_event = "IncomingConnection";
+
+            }
             SwarmEvent::ConnectionEstablished {
                 peer_id,
                 endpoint,
@@ -297,11 +302,18 @@ impl SwarmDriver {
                     }
                 }
             }
-            SwarmEvent::IncomingConnectionError { .. } => {}
+            SwarmEvent::IncomingConnectionError { .. } => {
+                the_event = "IncomingConnectionError";
+                
+            }
             SwarmEvent::Dialing {
                 peer_id,
                 connection_id,
-            } => trace!("Dialing {peer_id:?} on {connection_id:?}"),
+            } => {
+                
+                the_event = "Dialing";
+                trace!("Dialing {peer_id:?} on {connection_id:?}")
+            },
 
             SwarmEvent::Behaviour(NodeEvent::Autonat(event)) => {
                 the_event = "Autonat";
@@ -329,7 +341,10 @@ impl SwarmDriver {
                     }
                 }
             }
-            other => debug!("SwarmEvent has been ignored: {other:?}"),
+            other => {
+                the_event = "other";
+                debug!("SwarmEvent has been ignored: {other:?}")
+            },
         }
 
         trace!("Swarm event {the_event:?} took: {:?}", start_time.elapsed());

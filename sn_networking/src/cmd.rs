@@ -132,7 +132,7 @@ pub struct SwarmLocalState {
 impl SwarmDriver {
     pub(crate) fn handle_cmd(&mut self, cmd: SwarmCmd) -> Result<(), Error> {
         let start_time = std::time::Instant::now();
-        let mut the_cmd = "somecmd";
+        let the_cmd ;
         match cmd {
             SwarmCmd::GetRecordKeysClosestToTarget {
                 key,
