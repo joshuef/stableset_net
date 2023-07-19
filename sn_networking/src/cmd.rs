@@ -321,11 +321,19 @@ impl SwarmDriver {
         event_sender: mpsc::Sender<NetworkEvent>,
         pending_get_closest_peers: &mut PendingGetClosest,
         pending_requests: &mut HashMap<RequestId, Option<oneshot::Sender<Result<Response>>>>,
+        pending_query: &mut HashMap<QueryId, oneshot::Sender<Result<Record>>>,
+
         our_peer_id: PeerId,
     ) -> Result<(), Error> {
         let start_time;
         let the_cmd;
         match cmd {
+            SwarmCmd::GetNetworkRecord { key, sender } => {
+                the_cmd = "GetNetworkRecord";
+                start_time = std::time::Instant::now();
+                let query_id = swarm.behaviour_mut().kademlia.get_record(key);
+                let _ = pending_query.insert(query_id, sender);
+            }
             SwarmCmd::StartListening { addr, sender } => {
                 the_cmd = "StartListening";
                 start_time = std::time::Instant::now();

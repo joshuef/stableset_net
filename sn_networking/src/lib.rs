@@ -476,7 +476,7 @@ impl SwarmDriver {
                             continue;
                         }
 
-                        if let Err(err) = Self::handle_cmd(swarm, cmd, event_sender, &mut pending_get_closest_peers, &mut pending_requests, self.self_peer_id) {
+                        if let Err(err) = Self::handle_cmd(swarm, cmd, event_sender, &mut pending_get_closest_peers, &mut pending_requests,&mut pending_query, self.self_peer_id) {
                             warn!("Error while handling cmd: {err}");
                         }
                     },
