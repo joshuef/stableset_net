@@ -138,7 +138,7 @@ pub struct SwarmLocalState {
 
 impl SwarmDriver {
     /// Returns the list of keys that are within the provided distance to the target
-    pub fn get_record_keys_closest_to_targettttt(
+    pub fn get_existing_keys_closest_to_target(
         existing_keys: HashSet<NetworkAddress>,
         target: KBucketKey<Vec<u8>>,
         distance_bar: Distance,
@@ -149,12 +149,10 @@ impl SwarmDriver {
             .filter_map(|key| {
                 // extract record key from the existing key
                 if let NetworkAddress::RecordKey(key) = key {
-                    // key
                     let record_key = KBucketKey::from(key.clone());
                     if target.distance(&record_key) < distance_bar {
                         let record_key = RecordKey::new(&key);
                         Some(record_key)
-                        // None
                     } else {
                         None
                     }
@@ -163,25 +161,14 @@ impl SwarmDriver {
                 }
             })
             .collect()
-        // .cloned()
-        // .collect_vec()
     }
 
-    pub(crate) fn handle_replication_cmd(
-        // swarm: &mut libp2p::Swarm<NodeBehaviour>,
+    pub(crate) fn handle_record_key_cmds(
         cmd: SwarmCmd,
-        // event_sender: mpsc::Sender<NetworkEvent>,
-        // pending_get_closest_peers: &mut PendingGetClosest,
-        // pending_query: &mut HashMap<QueryId, oneshot::Sender<Result<Record>>>,
         replication_fetcher: &mut replication_fetcher::ReplicationFetcher,
-
         existing_keys: &HashSet<NetworkAddress>,
-        // pending_record_put: &mut HashMap<QueryId, oneshot::Sender<Result<()>>>,
-        // pending_requests: &mut HashMap<RequestId, Option<oneshot::Sender<Result<Response>>>>,
-        // our_peer_id: PeerId,
     ) -> Result<(), Error> {
         let start_time;
-        // let start_time = std::time::Instant::now();
         let the_cmd;
         match cmd {
             SwarmCmd::GetRecordKeysClosestToTarget {
@@ -191,8 +178,7 @@ impl SwarmDriver {
             } => {
                 the_cmd = "GetRecordKeysClosestToTarget";
                 start_time = std::time::Instant::now();
-                // let existing_keys = existing_keys.iter().map(|key| key.as_kbucket_key()).collect();
-                let peers = Self::get_record_keys_closest_to_targettttt(
+                let peers = Self::get_existing_keys_closest_to_target(
                     existing_keys.clone(),
                     key.as_kbucket_key(),
                     distance,
@@ -203,13 +189,7 @@ impl SwarmDriver {
             SwarmCmd::AddKeysToReplicationFetcher { peer, keys, sender } => {
                 the_cmd = "AddKeysToReplicationFetcher";
                 start_time = std::time::Instant::now();
-                // check if we have any of the data before adding it.
-                // let existing_keys: HashSet<NetworkAddress> = swarm
-                //     .behaviour()
-                //     .kademlia
-                //     .store
-                //     .record_addresses();
-
+  
                 // remove any keys that we already have from replication fetcher
                 replication_fetcher.remove_held_data(&existing_keys);
 
@@ -234,12 +214,15 @@ impl SwarmDriver {
                 let keys_to_fetch = replication_fetcher.notify_fetch_result(peer, key, result);
                 let _ = sender.send(keys_to_fetch);
             }
+            SwarmCmd::RecordStoreHasKey { key, sender } => {
+                the_cmd = "RecordStoreHasKey";
+                start_time = std::time::Instant::now();
 
+                let key_as_address = NetworkAddress::RecordKey(key.to_vec());
+                let has_key = existing_keys.contains(&key_as_address);
+                let _ = sender.send(has_key);
+            }
             other => {
-                // return Err(format_err!(
-                //     "Swarm Driver ReplicationHandler: Unsupported SwarmCmd: {:?}",
-                //     other
-                // ))
                 the_cmd = "Other in ReplicationHandler";
                 start_time = std::time::Instant::now();
 
@@ -252,7 +235,7 @@ impl SwarmDriver {
         }
 
         trace!(
-            "Swarm Driver Cmd: {the_cmd:?} took: {:?}",
+            "Swarm Driver Record Keys: {the_cmd:?} took: {:?}",
             start_time.elapsed()
         );
 
@@ -262,12 +245,10 @@ impl SwarmDriver {
     pub(crate) fn handle_kad_store_cmd(
         swarm: &mut libp2p::Swarm<NodeBehaviour>,
         cmd: SwarmCmd,
-        // event_sender: mpsc::Sender<NetworkEvent>,
         pending_record_put: &mut HashMap<QueryId, oneshot::Sender<Result<()>>>,
     ) -> Result<Option<HashSet<NetworkAddress>>, Error> {
         let mut updated_records = None;
         let start_time;
-        // let start_time = std::time::Instant::now();
         let the_cmd;
         match cmd {
             SwarmCmd::SetRecordDistanceRange { distance } => {
@@ -318,13 +299,6 @@ impl SwarmDriver {
                         .record_addresses(),
                 );
             }
-            SwarmCmd::RecordStoreHasKey { key, sender } => {
-                the_cmd = "RecordStoreHasKey";
-                start_time = std::time::Instant::now();
-                let has_key = swarm.behaviour_mut().kademlia.store_mut().contains(&key);
-                let _ = sender.send(has_key);
-            }
-
             other => {
                 start_time = std::time::Instant::now();
                 the_cmd = "OTHER in kad store";
@@ -346,13 +320,10 @@ impl SwarmDriver {
         cmd: SwarmCmd,
         event_sender: mpsc::Sender<NetworkEvent>,
         pending_get_closest_peers: &mut PendingGetClosest,
-        // pending_query: &mut HashMap<QueryId, oneshot::Sender<Result<Record>>>,
-        // pending_record_put: &mut HashMap<QueryId, oneshot::Sender<Result<()>>>,
         pending_requests: &mut HashMap<RequestId, Option<oneshot::Sender<Result<Response>>>>,
         our_peer_id: PeerId,
     ) -> Result<(), Error> {
         let start_time;
-        // let start_time = std::time::Instant::now();
         let the_cmd;
         match cmd {
             SwarmCmd::StartListening { addr, sender } => {

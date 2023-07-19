@@ -453,21 +453,21 @@ impl SwarmDriver {
                 },
                 some_cmd = self.cmd_receiver.recv() => match some_cmd {
                     Some(cmd) => {
-                        if let SwarmCmd::GetRecordKeysClosestToTarget{..} | SwarmCmd::AddKeysToReplicationFetcher{..} | SwarmCmd::NotifyFetchResult{..} = cmd {
-                            if let Err(err) = Self::handle_replication_cmd(cmd, &mut replication_fetcher, &existing_keys) {
+                        if let SwarmCmd::RecordStoreHasKey{..} | SwarmCmd::GetRecordKeysClosestToTarget{..} | SwarmCmd::AddKeysToReplicationFetcher{..} | SwarmCmd::NotifyFetchResult{..} = cmd {
+                            if let Err(err) = Self::handle_record_key_cmds(cmd, &mut replication_fetcher, &existing_keys) {
                                 warn!("Error while handling replication cmd: {err}");
                             }
                             continue;
                         }
 
 
-                        if let SwarmCmd::AddKeysToReplicationFetcher{..} | SwarmCmd::NotifyFetchResult{..} = cmd {
+                        if let SwarmCmd::PutLocalRecord{..} |  SwarmCmd::PutRecord{..} | SwarmCmd::GetLocalRecord{..} | SwarmCmd::SetRecordDistanceRange{..} | SwarmCmd::AddKeysToReplicationFetcher{..} | SwarmCmd::NotifyFetchResult{..} = cmd {
                             match Self::handle_kad_store_cmd(swarm, cmd, &mut pending_record_put) {
                                 Ok(updated_records) => {
                                     if let Some(updated_records) = updated_records {
                                         existing_keys = updated_records;
                                     }
-                                    continue;
+
                                 },
                                 Err(err) =>{
                                     warn!("Error while handling kad store cmd: {err}");
