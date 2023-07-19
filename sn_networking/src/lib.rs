@@ -426,6 +426,7 @@ impl SwarmDriver {
 
         // Cmd handler only
         let mut replication_fetcher = Default::default();
+        
 
         let swarm = &mut self.swarm;
 
@@ -452,8 +453,7 @@ impl SwarmDriver {
                 },
                 some_cmd = self.cmd_receiver.recv() => match some_cmd {
                     Some(cmd) => {
-                        let start_time = Instant::now();
-                        if let SwarmCmd::AddKeysToReplicationFetcher{..} | SwarmCmd::NotifyFetchResult{..} = cmd {
+                        if let SwarmCmd::GetRecordKeysClosestToTarget{..} | SwarmCmd::AddKeysToReplicationFetcher{..} | SwarmCmd::NotifyFetchResult{..} = cmd {
                             if let Err(err) = Self::handle_replication_cmd(cmd, &mut replication_fetcher, &existing_keys) {
                                 warn!("Error while handling replication cmd: {err}");
                             }
@@ -476,10 +476,9 @@ impl SwarmDriver {
                             continue;
                         }
 
-                        if let Err(err) = Self::handle_cmd(swarm, cmd, event_sender, &mut pending_get_closest_peers, &mut pending_query, &mut pending_record_put, &mut pending_requests, self.self_peer_id) {
+                        if let Err(err) = Self::handle_cmd(swarm, cmd, event_sender, &mut pending_get_closest_peers, &mut pending_requests, self.self_peer_id) {
                             warn!("Error while handling cmd: {err}");
                         }
-                        debug!("cmd_receiver, elapsed: {:?}", start_time.elapsed());
                     },
                     None =>  {
                         // no cmd...
