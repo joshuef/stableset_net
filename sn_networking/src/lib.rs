@@ -111,10 +111,10 @@ pub struct SwarmDriver {
     pending_query: HashMap<QueryId, oneshot::Sender<Result<Record>>>,
     pending_record_put: HashMap<QueryId, oneshot::Sender<Result<()>>>,
     replication_fetcher: ReplicationFetcher,
-    local: bool,
+    is_local: bool,
     /// A list of the most recent peers we have dialed ourselves.
     // dialed_peers: CircularVec<PeerId>,
-    dead_peers: BTreeSet<PeerId>,
+    // dead_peers: BTreeSet<PeerId>,
     is_client: bool,
 }
 
@@ -389,13 +389,13 @@ impl SwarmDriver {
             pending_query: Default::default(),
             pending_record_put: Default::default(),
             replication_fetcher: Default::default(),
-            local,
+            is_local: local,
             // We use 63 here, as in practice the capactiy will be rounded to the nearest 2^(n-1).
             // Source: https://users.rust-lang.org/t/the-best-ring-buffer-library/58489/8
             // 63 will mean at least 63 most recent peers we have dialed, which should be allow for enough time for the
             // `identify` protocol to kick in and get them in the routing table.
             // dialed_peers: CircularVec::new(63),
-            dead_peers: Default::default(),
+            // dead_peers: Default::default(),
             is_client,
         };
 
@@ -427,6 +427,7 @@ impl SwarmDriver {
         // local: bool,
         // /// A list of the most recent peers we have dialed ourselves.
         let mut dialed_peers = CircularVec::new(63);
+        let mut dead_peers = BTreeSet::default();
         // dead_peers: BTreeSet<PeerId>,
 
         loop {
@@ -435,8 +436,8 @@ impl SwarmDriver {
                     let start_time = Instant::now();
 
                     // TODO: refactor this out some
-
-                    if let Err(err) = self.handle_swarm_events(swarm_event, &mut pending_get_closest_peers, &mut dialed_peers) {
+                    let swarm = &mut self.swarm;
+                    if let Err(err) = Self::handle_swarm_events(swarm, swarm_event, &mut pending_get_closest_peers, &mut dialed_peers, &mut dead_peers, self.is_local, self.is_client) {
                         warn!("Error while handling swarm event: {err}");
                     }
                     debug!("swarm_event, elapsed: {:?}", start_time.elapsed());

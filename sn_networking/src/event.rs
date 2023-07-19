@@ -30,7 +30,7 @@ use sn_protocol::{
     messages::{Request, Response},
     NetworkAddress,
 };
-use std::collections::HashSet;
+use std::collections::{HashSet, BTreeSet};
 use tokio::sync::oneshot;
 use tracing::{info, warn};
 
@@ -124,75 +124,15 @@ pub enum NetworkEvent {
 }
 
 impl SwarmDriver {
-    /// Handle Identify events
-    pub(super) fn handle_identify_event(behaviour_mut: &mut NetworkBehaviour, identify_event: libp2p::identify::Event, pending_get_closest_peers: &mut PendingGetClosest, dialed_peers: CircularVec<PeerId>, is_local: bool) {
-        let start_time;
-        let the_event;
-
-
-            match *identify_event {
-                libp2p::identify::Event::Received { peer_id, info } => {
-                    debug!(%peer_id, ?info, "identify: received info");
-
-                    // If we are not local, we care only for peers that we dialed and thus are reachable.
-                    if (is_local || dialed_peers.contains(&peer_id))
-                        && info.agent_version.starts_with(IDENTIFY_AGENT_STR)
-                    {
-                        let addrs = match is_local {
-                            true => info.listen_addrs,
-                            // If we're not in local mode, only add globally reachable addresses
-                            false => info
-                                .listen_addrs
-                                .into_iter()
-                                .filter(multiaddr_is_global)
-                                .collect(),
-                        };
-                        // Strip the `/p2p/...` part of the multiaddresses
-                        let addrs: Vec<_> = addrs
-                            .into_iter()
-                            .map(|addr| multiaddr_strip_p2p(&addr))
-                            // And deduplicate the list
-                            .unique()
-                            .collect();
-
-                        debug!(%peer_id, ?addrs, "identify: adding addresses to routing table");
-                        for multiaddr in addrs.clone() {
-                            let _routing_update = self
-                                .swarm
-                                .behaviour_mut()
-                                .kademlia
-                                .add_address(&peer_id, multiaddr);
-                        }
-
-                        // If the peer supports AutoNAT, add it as server
-                        if info.protocols.iter().any(|protocol| {
-                            protocol.to_string().starts_with("/libp2p/autonat/")
-                        }) {
-                            let a = &mut self.swarm.behaviour_mut().autonat;
-                            // It could be that we are on a local network and have AutoNAT disabled.
-                            if let Some(autonat) = a.as_mut() {
-                                for multiaddr in addrs {
-                                    autonat.add_server(peer_id, Some(multiaddr));
-                                }
-                            }
-                        }
-                    }
-                }
-                libp2p::identify::Event::Sent { .. } => trace!("identify: {iden:?}"),
-                libp2p::identify::Event::Pushed { .. } => trace!("identify: {iden:?}"),
-                libp2p::identify::Event::Error { .. } => trace!("identify: {iden:?}"),
-            }
-
-            trace!("Swarm event {the_event:?} took: {:?}", start_time.elapsed());
-
-            Ok(())
-        
-    }
     // Handle `SwarmEvents`
     pub(super) fn handle_swarm_events<EventError: std::error::Error>(
-        &mut self,
+        swarm: &mut libp2p::Swarm<NodeBehaviour>,
         event: SwarmEvent<NodeEvent, EventError>,
         pending_get_closest_peers: &mut PendingGetClosest,
+        dialed_peers: &mut CircularVec<PeerId>,
+        dead_peers: &mut BTreeSet<PeerId>,
+        is_local: bool, 
+        is_client: bool
     ) -> Result<()> {
         let start_time;
         let the_event;
@@ -211,9 +151,64 @@ impl SwarmDriver {
             SwarmEvent::Behaviour(NodeEvent::Kademlia(kad_event)) => {
                 the_event = "kad";
                 start_time = std::time::Instant::now();
-                self.handle_kad_event(kad_event, pending_get_closest_peers)?;
+                self.handle_kad_event(kad_event, pending_get_closest_peers, dead_peers)?;
             }
-            
+            SwarmEvent::Behaviour(NodeEvent::Identify(iden)) => {
+                the_event = "identify";
+                start_time = std::time::Instant::now();
+                match *iden {
+                    libp2p::identify::Event::Received { peer_id, info } => {
+                        debug!(%peer_id, ?info, "identify: received info");
+
+                        // If we are not local, we care only for peers that we dialed and thus are reachable.
+                        if (self.local || dialed_peers.contains(&peer_id))
+                            && info.agent_version.starts_with(IDENTIFY_AGENT_STR)
+                        {
+                            let addrs = match self.local {
+                                true => info.listen_addrs,
+                                // If we're not in local mode, only add globally reachable addresses
+                                false => info
+                                    .listen_addrs
+                                    .into_iter()
+                                    .filter(multiaddr_is_global)
+                                    .collect(),
+                            };
+                            // Strip the `/p2p/...` part of the multiaddresses
+                            let addrs: Vec<_> = addrs
+                                .into_iter()
+                                .map(|addr| multiaddr_strip_p2p(&addr))
+                                // And deduplicate the list
+                                .unique()
+                                .collect();
+
+                            debug!(%peer_id, ?addrs, "identify: adding addresses to routing table");
+                            for multiaddr in addrs.clone() {
+                                let _routing_update = self
+                                    .swarm
+                                    .behaviour_mut()
+                                    .kademlia
+                                    .add_address(&peer_id, multiaddr);
+                            }
+
+                            // If the peer supports AutoNAT, add it as server
+                            if info.protocols.iter().any(|protocol| {
+                                protocol.to_string().starts_with("/libp2p/autonat/")
+                            }) {
+                                let a = &mut swarm.behaviour_mut().autonat;
+                                // It could be that we are on a local network and have AutoNAT disabled.
+                                if let Some(autonat) = a.as_mut() {
+                                    for multiaddr in addrs {
+                                        autonat.add_server(peer_id, Some(multiaddr));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    libp2p::identify::Event::Sent { .. } => trace!("identify: {iden:?}"),
+                    libp2p::identify::Event::Pushed { .. } => trace!("identify: {iden:?}"),
+                    libp2p::identify::Event::Error { .. } => trace!("identify: {iden:?}"),
+                }
+            }
             #[cfg(feature = "local-discovery")]
             SwarmEvent::Behaviour(NodeEvent::Mdns(mdns_event)) => match *mdns_event {
                 mdns::Event::Discovered(list) => {
@@ -248,15 +243,15 @@ impl SwarmDriver {
                 let address = address.with(Protocol::P2p(local_peer_id));
 
                 // Trigger server mode if we're not a client
-                if !self.is_client {
-                    if self.local {
+                if !is_client {
+                    if is_local {
                         // all addresses are effectively external here...
                         // this is needed for Kad Mode::Server
-                        self.swarm.add_external_address(address.clone());
+                        swarm.add_external_address(address.clone());
                     } else {
                         // only add our global addresses
                         if multiaddr_is_global(&address) {
-                            self.swarm.add_external_address(address.clone());
+                            swarm.add_external_address(address.clone());
                         }
                     }
                 }
@@ -282,7 +277,7 @@ impl SwarmDriver {
 
                 if endpoint.is_dialer() {
                     debug!("is dialler");
-                    self.dialed_peers.push(peer_id);
+                    dialed_peers.push(peer_id);
                     debug!("is dialler pushed");
                 }
             }
@@ -325,12 +320,12 @@ impl SwarmDriver {
                     debug!("Outgoing ongoing after iter...");
                     if is_wrong_id || is_all_connection_failed {
                         info!("Detected dead peer {peer_id:?}");
-                        if !self.dead_peers.contains(&peer_id) {
-                            let _ = self.dead_peers.insert(peer_id);
+                        if !dead_peers.contains(&peer_id) {
+                            let _ = dead_peers.insert(peer_id);
                             self.send_event(NetworkEvent::PeerRemoved(peer_id));
                         }
-                        let _ = self.swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
-                        self.log_kbuckets(&peer_id);
+                        let _ = swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
+                        // self.log_kbuckets(&peer_id);
                     }
                 }
             }
@@ -364,7 +359,7 @@ impl SwarmDriver {
                                 // Or, should we just wait and let Identify do it on its own? But, what if we are not connected
                                 // to any peers anymore? (E.g., our connections timed out etc)
                                 // let all_peers: Vec<_> = self.swarm.connected_peers().cloned().collect();
-                                // self.swarm.behaviour_mut().identify.push(all_peers);
+                                // swarm.behaviour_mut().identify.push(all_peers);
                             }
                             NatStatus::Private => {
                                 // We could just straight out error here. In the future we might try to activate a relay mechanism.
@@ -389,6 +384,7 @@ impl SwarmDriver {
         &mut self,
         kad_event: KademliaEvent,
         pending_get_closest_peers: &mut PendingGetClosest,
+        dead_peers: &mut BTreeSet<PeerId>
     ) -> Result<()> {
         match kad_event {
             ref event @ KademliaEvent::OutboundQueryProgressed {
@@ -490,10 +486,10 @@ impl SwarmDriver {
                 ..
             } => {
                 if is_new_peer {
-                    if self.dead_peers.remove(&peer) {
+                    if dead_peers.remove(&peer) {
                         info!("A dead peer {peer:?} joined back with the same ID");
                     }
-                    self.log_kbuckets(&peer);
+                    // self.log_kbuckets(&peer);
                     self.send_event(NetworkEvent::PeerAdded(peer));
                     let connected_peers = self.swarm.connected_peers().count();
 
@@ -503,7 +499,7 @@ impl SwarmDriver {
                 if old_peer.is_some() {
                     info!("Evicted old peer on new peer join: {old_peer:?}");
                     self.send_event(NetworkEvent::PeerRemoved(peer));
-                    self.log_kbuckets(&peer);
+                    // self.log_kbuckets(&peer);
                 }
             }
             KademliaEvent::InboundRequest {
@@ -532,24 +528,24 @@ impl SwarmDriver {
     }
 
     fn log_kbuckets(&mut self, peer: &PeerId) {
-        let distance = NetworkAddress::from_peer(self.self_peer_id)
-            .distance(&NetworkAddress::from_peer(*peer));
-        info!("Peer {peer:?} has a {:?} distance to us", distance.ilog2());
-        let mut kbucket_table_stats = vec![];
-        let mut index = 0;
-        let mut total_peers = 0;
-        for kbucket in self.swarm.behaviour_mut().kademlia.kbuckets() {
-            let range = kbucket.range();
-            total_peers += kbucket.num_entries();
-            if let Some(distance) = range.0.ilog2() {
-                kbucket_table_stats.push((index, kbucket.num_entries(), distance));
-            } else {
-                // This shall never happen.
-                error!("bucket #{index:?} is ourself ???!!!");
-            }
-            index += 1;
-        }
-        info!("kBucketTable has {index:?} kbuckets {total_peers:?} peers, {kbucket_table_stats:?}");
+        // let distance = NetworkAddress::from_peer(self.self_peer_id)
+        //     .distance(&NetworkAddress::from_peer(*peer));
+        // info!("Peer {peer:?} has a {:?} distance to us", distance.ilog2());
+        // let mut kbucket_table_stats = vec![];
+        // let mut index = 0;
+        // let mut total_peers = 0;
+        // for kbucket in swarm.behaviour_mut().kademlia.kbuckets() {
+        //     let range = kbucket.range();
+        //     total_peers += kbucket.num_entries();
+        //     if let Some(distance) = range.0.ilog2() {
+        //         kbucket_table_stats.push((index, kbucket.num_entries(), distance));
+        //     } else {
+        //         // This shall never happen.
+        //         error!("bucket #{index:?} is ourself ???!!!");
+        //     }
+        //     index += 1;
+        // }
+        // info!("kBucketTable has {index:?} kbuckets {total_peers:?} peers, {kbucket_table_stats:?}");
     }
 }
 
