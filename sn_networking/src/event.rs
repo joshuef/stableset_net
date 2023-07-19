@@ -127,22 +127,22 @@ impl SwarmDriver {
         event: SwarmEvent<NodeEvent, EventError>,
     ) -> Result<()> {
         let start_time = std::time::Instant::now();
-
+        let mut the_event = "something";
         let span = info_span!("Handling a swarm event");
         let _ = span.enter();
         match event {
             SwarmEvent::Behaviour(NodeEvent::MsgReceived(event)) => {
-                info!("Handling MsgReceived event: start {start_time:?}");
+                the_event = "MsgReceived";
                 if let Err(e) = self.handle_msg(event) {
                     warn!("MsgReceivedError: {e:?}");
                 }
             }
             SwarmEvent::Behaviour(NodeEvent::Kademlia(kad_event)) => {
-                info!("Handling kad event: start {start_time:?}");
+                the_event = "kad";
                 self.handle_kad_event(kad_event)?;
             }
             SwarmEvent::Behaviour(NodeEvent::Identify(iden)) => {
-                info!("Handling identify event: start {start_time:?}");
+                the_event = "identify";
                 match *iden {
                     libp2p::identify::Event::Received { peer_id, info } => {
                         debug!(%peer_id, ?info, "identify: received info");
@@ -199,7 +199,7 @@ impl SwarmDriver {
             #[cfg(feature = "local-discovery")]
             SwarmEvent::Behaviour(NodeEvent::Mdns(mdns_event)) => match *mdns_event {
                 mdns::Event::Discovered(list) => {
-                    info!("Handling mdns event: start {start_time:?}");
+                    the_event = "mdns";
 
                     if self.local {
                         for (peer_id, addr) in list {
@@ -219,7 +219,7 @@ impl SwarmDriver {
                 }
             },
             SwarmEvent::NewListenAddr { address, .. } => {
-                info!("Handling new listen event: start {start_time:?}");
+                the_event = "new listen";
 
                 let local_peer_id = *self.swarm.local_peer_id();
                 let address = address.with(Protocol::P2p(local_peer_id));
@@ -249,7 +249,7 @@ impl SwarmDriver {
                 num_established,
                 ..
             } => {
-                info!("Handling ConnectionEstablished event: start {start_time:?}");
+                the_event = "ConnectionEstablished";
 
                 debug!(%peer_id, num_established, "ConnectionEstablished: {}", endpoint_str(&endpoint));
 
@@ -264,12 +264,12 @@ impl SwarmDriver {
                 num_established,
                 connection_id,
             } => {
-                info!("Handling ConnectionClosed event: start {start_time:?}");
+                the_event = "ConnectionClosed";
 
                 debug!(%peer_id, ?connection_id, ?cause, num_established, "ConnectionClosed: {}", endpoint_str(&endpoint));
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
-                info!("Handling OutgoingConnectionError event: start {start_time:?}");
+                the_event = "OutgoingConnectionError";
                 error!("OutgoingConnectionError to {peer_id:?} - {error:?}");
                 if let Some(peer_id) = peer_id {
                     // Related errors are: WrongPeerId, ConnectionRefused(TCP), HandshakeTimedOut(QUIC)
@@ -304,7 +304,7 @@ impl SwarmDriver {
             } => trace!("Dialing {peer_id:?} on {connection_id:?}"),
 
             SwarmEvent::Behaviour(NodeEvent::Autonat(event)) => {
-                info!("Handling Autonat event: start {start_time:?}");
+                the_event = "Autonat";
 
                 match event {
                     autonat::Event::InboundProbe(e) => debug!("AutoNAT inbound probe: {e:?}"),
@@ -332,7 +332,7 @@ impl SwarmDriver {
             other => debug!("SwarmEvent has been ignored: {other:?}"),
         }
 
-        trace!("Swarm event took: {:?}", start_time.elapsed());
+        trace!("Swarm event {the_event:?} took: {:?}", start_time.elapsed());
         Ok(())
     }
 
