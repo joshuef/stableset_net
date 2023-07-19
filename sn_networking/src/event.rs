@@ -128,8 +128,7 @@ impl SwarmDriver {
     ) -> Result<()> {
         let start_time = std::time::Instant::now();
         let the_event;
-        let span = info_span!("Handling a swarm event");
-        let _ = span.enter();
+        let span = info!("Handling a swarm event");
         match event {
             SwarmEvent::Behaviour(NodeEvent::MsgReceived(event)) => {
                 the_event = "MsgReceived";
@@ -280,7 +279,9 @@ impl SwarmDriver {
                 error!("OutgoingConnectionError to {peer_id:?} - {error:?}");
                 if let Some(peer_id) = peer_id {
                     // Related errors are: WrongPeerId, ConnectionRefused(TCP), HandshakeTimedOut(QUIC)
+                    debug!("Outgoing before stringing...");
                     let err_string = format!("{error:?}");
+                    debug!("Outgoing before matching...");
                     let is_wrong_id = err_string.contains("WrongPeerId");
 
                     debug!("Outgoing ongoing...");
