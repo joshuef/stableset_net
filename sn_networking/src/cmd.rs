@@ -133,8 +133,8 @@ impl SwarmDriver {
     pub(crate) fn handle_cmd(
         &mut self,
         // swarm: &mut libp2p::Swarm<NodeBehaviour>,
-        event_sender: mpsc::Sender<NetworkEvent>,
         cmd: SwarmCmd,
+        event_sender: mpsc::Sender<NetworkEvent>,
         pending_get_closest_peers: &mut PendingGetClosest,
         pending_query: &mut HashMap<QueryId, oneshot::Sender<Result<Record>>>,
         // pending_record_put: &mut HashMap<QueryId, oneshot::Sender<Result<()>> >,

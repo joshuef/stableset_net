@@ -439,7 +439,7 @@ impl SwarmDriver {
 
         loop {
             let swarm = &mut self.swarm;
-            let event_sender = &mut self.event_sender.clone();
+            let event_sender = self.event_sender.clone();
             tokio::select! {
                 swarm_event = self.swarm.select_next_some() => {
                     let start_time = Instant::now();

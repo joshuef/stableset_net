@@ -32,7 +32,7 @@ impl SwarmDriver {
                     ..
                 } => {
                     trace!("Received request with id: {request_id:?}, req: {request:?}");
-                    self.send_event(event_sender,NetworkEvent::RequestReceived {
+                    Self::send_event(event_sender,NetworkEvent::RequestReceived {
                         req: request,
                         channel: MsgResponder::FromPeer(channel),
                     })
