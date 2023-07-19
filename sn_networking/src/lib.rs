@@ -111,9 +111,9 @@ pub struct SwarmDriver {
     // This wraps the call and pushes it off thread so as to be non-blocking
     event_sender: mpsc::Sender<NetworkEvent>,
     // pending_get_closest_peers: PendingGetClosest,
-    pending_requests: HashMap<RequestId, Option<oneshot::Sender<Result<Response>>>>,
+    // pending_requests: HashMap<RequestId, Option<oneshot::Sender<Result<Response>>>>,
     // pending_query: HashMap<QueryId, oneshot::Sender<Result<Record>>>,
-    pending_record_put: HashMap<QueryId, oneshot::Sender<Result<()>>>,
+    // pending_record_put: HashMap<QueryId, oneshot::Sender<Result<()>>>,
     // replication_fetcher: ReplicationFetcher,
     is_local: bool,
     /// A list of the most recent peers we have dialed ourselves.
@@ -388,9 +388,9 @@ impl SwarmDriver {
             cmd_receiver: swarm_cmd_receiver,
             event_sender: network_event_sender,
             // pending_get_closest_peers: Default::default(),
-            pending_requests: Default::default(),
+            // pending_requests: Default::default(),
             // pending_query: Default::default(),
-            pending_record_put: Default::default(),
+            // pending_record_put: Default::default(),
             // replication_fetcher: Default::default(),
             is_local: local,
             // We use 63 here, as in practice the capactiy will be rounded to the nearest 2^(n-1).
@@ -423,11 +423,6 @@ impl SwarmDriver {
     pub async fn run(mut self) {
         let mut pending_get_closest_peers = PendingGetClosest::default();
 
-        // pending_requests: HashMap<RequestId, Option<oneshot::Sender<Result<Response>>>>,
-        // pending_query: HashMap<QueryId, oneshot::Sender<Result<Record>>>,
-        // pending_record_put: HashMap<QueryId, oneshot::Sender<Result<()>>>,
-        // replication_fetcher: ReplicationFetcher,
-        // local: bool,
         // /// A list of the most recent peers we have dialed ourselves.
         let mut dialed_peers = CircularVec::new(63);
         let mut dead_peers = BTreeSet::default();
@@ -437,8 +432,6 @@ impl SwarmDriver {
 
         // Cmd handler only
         let mut replication_fetcher = Default::default();
-        // let mut pending_requests = BTreeSet::default();
-        // dead_peers: BTreeSet<PeerId>,
 
         loop {
             let swarm = &mut self.swarm;
