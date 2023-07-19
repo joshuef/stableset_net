@@ -8,19 +8,20 @@
 
 use crate::{
     error::{Error, Result},
-    MsgResponder, NetworkEvent, SwarmDriver,
+    MsgResponder, NetworkEvent, SwarmDriver, event,
 };
 
 use libp2p::request_response::{self, Message, RequestId};
 use sn_protocol::messages::{Request, Response};
 use std::collections::HashMap;
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, mpsc};
 use tracing::{trace, warn};
 impl SwarmDriver {
     /// Forwards `Request` to the upper layers using `Sender<NetworkEvent>`. Sends `Response` to the peers
     pub fn handle_msg(
         // &mut self,
         event: request_response::Event<Request, Response>,
+        event_sender: mpsc::Sender<NetworkEvent>,
         pending_requests: &mut HashMap<RequestId, Option<oneshot::Sender<Result<Response>>>>,
     ) -> Result<(), Error> {
         match event {

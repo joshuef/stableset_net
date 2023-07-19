@@ -149,7 +149,7 @@ impl SwarmDriver {
                 the_event = "MsgReceived";
                 start_time = std::time::Instant::now();
                 info!("Actually starting msg received handling");
-                if let Err(e) = Self::handle_msg(event, pending_requests) {
+                if let Err(e) = Self::handle_msg(event, event_sender, pending_requests) {
                     warn!("MsgReceivedError: {e:?}");
                 }
                 info!("Actually ending msg received handling");
@@ -160,6 +160,7 @@ impl SwarmDriver {
                 Self::handle_kad_event(
                     swarm,
                     kad_event,
+                    event_sender,
                     pending_get_closest_peers,
                     pending_query,
                     pending_record_put,
@@ -268,7 +269,7 @@ impl SwarmDriver {
                     }
                 }
 
-                self.send_event(NetworkEvent::NewListenAddr(address.clone()));
+                Self::send_event(event_sender, NetworkEvent::NewListenAddr(address.clone()));
 
                 info!("Local node is listening on {address:?}");
             }
@@ -334,7 +335,7 @@ impl SwarmDriver {
                         info!("Detected dead peer {peer_id:?}");
                         if !dead_peers.contains(&peer_id) {
                             let _ = dead_peers.insert(peer_id);
-                            self.send_event(NetworkEvent::PeerRemoved(peer_id));
+                            Self::send_event(event_sender, NetworkEvent::PeerRemoved(peer_id));
                         }
                         let _ = swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
                         // self.log_kbuckets(&peer_id);
@@ -363,7 +364,7 @@ impl SwarmDriver {
                     autonat::Event::OutboundProbe(e) => debug!("AutoNAT outbound probe: {e:?}"),
                     autonat::Event::StatusChanged { old, new } => {
                         info!("AutoNAT status changed: {old:?} -> {new:?}");
-                        self.send_event(NetworkEvent::NatStatusChanged(new.clone()));
+                        Self::send_event(event_sender, NetworkEvent::NatStatusChanged(new.clone()));
 
                         match new {
                             NatStatus::Public(_addr) => {
@@ -395,6 +396,7 @@ impl SwarmDriver {
     fn handle_kad_event(
         swarm: &mut libp2p::Swarm<NodeBehaviour>,
         kad_event: KademliaEvent,
+        event_sender: mpsc::Sender<NetworkEvent>,
         pending_get_closest_peers: &mut PendingGetClosest,
         pending_query: &mut HashMap<QueryId, oneshot::Sender<Result<Record>>>,
         pending_record_put: &mut HashMap<QueryId, oneshot::Sender<Result<()>>>,
@@ -504,7 +506,7 @@ impl SwarmDriver {
                         info!("A dead peer {peer:?} joined back with the same ID");
                     }
                     // self.log_kbuckets(&peer);
-                    self.send_event(NetworkEvent::PeerAdded(peer));
+                    Self::send_event(event_sender, NetworkEvent::PeerAdded(peer));
                     let connected_peers = swarm.connected_peers().count();
 
                     info!("Connected peers: {connected_peers}");
@@ -512,7 +514,7 @@ impl SwarmDriver {
 
                 if old_peer.is_some() {
                     info!("Evicted old peer on new peer join: {old_peer:?}");
-                    self.send_event(NetworkEvent::PeerRemoved(peer));
+                    Self::send_event(event_sender, NetworkEvent::PeerRemoved(peer));
                     // self.log_kbuckets(&peer);
                 }
             }
