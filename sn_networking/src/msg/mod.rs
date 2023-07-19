@@ -63,6 +63,7 @@ impl SwarmDriver {
                 error,
                 peer,
             } => {
+                debug!("msg out fail");
                 if let Some(sender) = self.pending_requests.remove(&request_id) {
                     match sender {
                         Some(sender) => {

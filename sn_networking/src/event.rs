@@ -133,9 +133,11 @@ impl SwarmDriver {
         match event {
             SwarmEvent::Behaviour(NodeEvent::MsgReceived(event)) => {
                 the_event = "MsgReceived";
+                info!("Actually starting msg received handling");
                 if let Err(e) = self.handle_msg(event) {
                     warn!("MsgReceivedError: {e:?}");
                 }
+                info!("Actually ending msg received handling");
             }
             SwarmEvent::Behaviour(NodeEvent::Kademlia(kad_event)) => {
                 the_event = "kad";
@@ -280,7 +282,10 @@ impl SwarmDriver {
                     // Related errors are: WrongPeerId, ConnectionRefused(TCP), HandshakeTimedOut(QUIC)
                     let err_string = format!("{error:?}");
                     let is_wrong_id = err_string.contains("WrongPeerId");
+
+                    debug!("Outgoing ongoing...");
                     let is_all_connection_failed = if let DialError::Transport(ref errors) = error {
+                        debug!("Outgoing ongoing before iter...");
                         errors.iter().all(|(_, error)| {
                             let err_string = format!("{error:?}");
                             err_string.contains("ConnectionRefused")
@@ -291,6 +296,7 @@ impl SwarmDriver {
                     } else {
                         false
                     };
+                    debug!("Outgoing ongoing after iter...");
                     if is_wrong_id || is_all_connection_failed {
                         info!("Detected dead peer {peer_id:?}");
                         if !self.dead_peers.contains(&peer_id) {

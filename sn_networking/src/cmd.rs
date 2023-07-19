@@ -196,6 +196,7 @@ impl SwarmDriver {
             }
             SwarmCmd::GetNetworkRecord { key, sender } => {
                 the_cmd = "GetNetworkRecord";
+                info!("Here elapsed: {:?}", start_time.elapsed());
                 let query_id = self.swarm.behaviour_mut().kademlia.get_record(key);
                 let _ = self.pending_query.insert(query_id, sender);
             }
