@@ -126,12 +126,14 @@ impl SwarmDriver {
         &mut self,
         event: SwarmEvent<NodeEvent, EventError>,
     ) -> Result<()> {
-        let start_time = std::time::Instant::now();
+        let start_time;
         let the_event;
-        let span = info!("Handling a swarm event");
+        // start_time = std::time::Instant::now();
+        info!("Handling a swarm event");
         match event {
             SwarmEvent::Behaviour(NodeEvent::MsgReceived(event)) => {
                 the_event = "MsgReceived";
+                start_time = std::time::Instant::now();
                 info!("Actually starting msg received handling");
                 if let Err(e) = self.handle_msg(event) {
                     warn!("MsgReceivedError: {e:?}");
@@ -140,10 +142,12 @@ impl SwarmDriver {
             }
             SwarmEvent::Behaviour(NodeEvent::Kademlia(kad_event)) => {
                 the_event = "kad";
+                start_time = std::time::Instant::now();
                 self.handle_kad_event(kad_event)?;
             }
             SwarmEvent::Behaviour(NodeEvent::Identify(iden)) => {
                 the_event = "identify";
+                start_time = std::time::Instant::now();
                 match *iden {
                     libp2p::identify::Event::Received { peer_id, info } => {
                         debug!(%peer_id, ?info, "identify: received info");
@@ -201,6 +205,7 @@ impl SwarmDriver {
             SwarmEvent::Behaviour(NodeEvent::Mdns(mdns_event)) => match *mdns_event {
                 mdns::Event::Discovered(list) => {
                     the_event = "mdns";
+                    start_time = std::time::Instant::now();
 
                     if self.local {
                         for (peer_id, addr) in list {
@@ -217,12 +222,14 @@ impl SwarmDriver {
                 }
                 mdns::Event::Expired(peer) => {
                     the_event = "mdns";
+                    start_time = std::time::Instant::now();
 
                     debug!("mdns peer {peer:?} expired");
                 }
             },
             SwarmEvent::NewListenAddr { address, .. } => {
                 the_event = "new listen";
+                start_time = std::time::Instant::now();
 
                 let local_peer_id = *self.swarm.local_peer_id();
                 let address = address.with(Protocol::P2p(local_peer_id));
@@ -247,6 +254,7 @@ impl SwarmDriver {
             }
             SwarmEvent::IncomingConnection { .. } => {
                 the_event = "IncomingConnection";
+                start_time = std::time::Instant::now();
 
             }
             SwarmEvent::ConnectionEstablished {
@@ -256,11 +264,14 @@ impl SwarmDriver {
                 ..
             } => {
                 the_event = "ConnectionEstablished";
+                start_time = std::time::Instant::now();
 
                 debug!(%peer_id, num_established, "ConnectionEstablished: {}", endpoint_str(&endpoint));
 
                 if endpoint.is_dialer() {
+                    debug!("is dialler");
                     self.dialed_peers.push(peer_id);
+                    debug!("is dialler pushed");
                 }
             }
             SwarmEvent::ConnectionClosed {
@@ -271,11 +282,13 @@ impl SwarmDriver {
                 connection_id,
             } => {
                 the_event = "ConnectionClosed";
+                start_time = std::time::Instant::now();
 
                 debug!(%peer_id, ?connection_id, ?cause, num_established, "ConnectionClosed: {}", endpoint_str(&endpoint));
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
                 the_event = "OutgoingConnectionError";
+                start_time = std::time::Instant::now();
                 error!("OutgoingConnectionError to {peer_id:?} - {error:?}");
                 if let Some(peer_id) = peer_id {
                     // Related errors are: WrongPeerId, ConnectionRefused(TCP), HandshakeTimedOut(QUIC)
@@ -305,12 +318,13 @@ impl SwarmDriver {
                             self.send_event(NetworkEvent::PeerRemoved(peer_id));
                         }
                         let _ = self.swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
-                        self.log_kbuckets(&peer_id);
+                        // self.log_kbuckets(&peer_id);
                     }
                 }
             }
             SwarmEvent::IncomingConnectionError { .. } => {
                 the_event = "IncomingConnectionError";
+                start_time = std::time::Instant::now();
                 
             }
             SwarmEvent::Dialing {
@@ -319,11 +333,13 @@ impl SwarmDriver {
             } => {
                 
                 the_event = "Dialing";
+                start_time = std::time::Instant::now();
                 trace!("Dialing {peer_id:?} on {connection_id:?}")
             },
 
             SwarmEvent::Behaviour(NodeEvent::Autonat(event)) => {
                 the_event = "Autonat";
+                start_time = std::time::Instant::now();
 
                 match event {
                     autonat::Event::InboundProbe(e) => debug!("AutoNAT inbound probe: {e:?}"),
@@ -350,6 +366,7 @@ impl SwarmDriver {
             }
             other => {
                 the_event = "other";
+                start_time = std::time::Instant::now();
                 debug!("SwarmEvent has been ignored: {other:?}")
             },
         }
@@ -464,7 +481,7 @@ impl SwarmDriver {
                     if self.dead_peers.remove(&peer) {
                         info!("A dead peer {peer:?} joined back with the same ID");
                     }
-                    self.log_kbuckets(&peer);
+                    // self.log_kbuckets(&peer);
                     self.send_event(NetworkEvent::PeerAdded(peer));
                     let connected_peers = self.swarm.connected_peers().count();
 
@@ -474,7 +491,7 @@ impl SwarmDriver {
                 if old_peer.is_some() {
                     info!("Evicted old peer on new peer join: {old_peer:?}");
                     self.send_event(NetworkEvent::PeerRemoved(peer));
-                    self.log_kbuckets(&peer);
+                    // self.log_kbuckets(&peer);
                 }
             }
             KademliaEvent::InboundRequest {
