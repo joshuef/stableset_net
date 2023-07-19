@@ -20,9 +20,11 @@ use itertools::Itertools;
 use libp2p::mdns;
 use libp2p::{
     autonat::{self, NatStatus},
-    kad::{GetRecordOk, InboundRequest, Kademlia, KademliaEvent, QueryResult, QueryId, Record, K_VALUE},
+    kad::{
+        GetRecordOk, InboundRequest, Kademlia, KademliaEvent, QueryId, QueryResult, Record, K_VALUE,
+    },
     multiaddr::Protocol,
-    request_response::{self, ResponseChannel as PeerResponseChannel, RequestId},
+    request_response::{self, RequestId, ResponseChannel as PeerResponseChannel},
     swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent},
     Multiaddr, PeerId,
 };
@@ -30,7 +32,7 @@ use sn_protocol::{
     messages::{Request, Response},
     NetworkAddress,
 };
-use std::collections::{BTreeSet, HashSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use tokio::sync::oneshot;
 use tracing::{info, warn};
 

@@ -445,7 +445,7 @@ impl SwarmDriver {
                     let start_time = Instant::now();
 
                     // TODO: refactor this out some
-                    if err = Self::handle_swarm_events(swarm, swarm_event, &mut pending_query, &mut pending_record_put, &mut pending_get_closest_peers, pending_requests, &mut dialed_peers, &mut dead_peers, self.is_local, self.is_client);
+                    let err = Self::handle_swarm_events(swarm, swarm_event, &mut pending_query, &mut pending_record_put, &mut pending_get_closest_peers, pending_requests, &mut dialed_peers, &mut dead_peers, self.is_local, self.is_client);
 
                     if let Err(err) = err {
                         warn!("Error while handling swarm event: {err}");

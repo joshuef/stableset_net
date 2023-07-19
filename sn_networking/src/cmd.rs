@@ -9,7 +9,7 @@
 use super::{error::Error, MsgResponder, NetworkEvent, SwarmDriver};
 use crate::{error::Result, multiaddr_pop_p2p, PendingGetClosest, CLOSE_GROUP_SIZE};
 use libp2p::{
-    kad::{store::RecordStore, KBucketDistance as Distance, Quorum, Record, RecordKey},
+    kad::{store::RecordStore, KBucketDistance as Distance, QueryId, Quorum, Record, RecordKey},
     swarm::{
         dial_opts::{DialOpts, PeerCondition},
         DialError,
@@ -20,7 +20,7 @@ use sn_protocol::{
     messages::{Request, Response},
     NetworkAddress,
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use tokio::sync::oneshot;
 
 /// Commands to send to the Swarm
