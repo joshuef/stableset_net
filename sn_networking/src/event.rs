@@ -126,18 +126,23 @@ impl SwarmDriver {
         &mut self,
         event: SwarmEvent<NodeEvent, EventError>,
     ) -> Result<()> {
+        let start_time = std::time::Instant::now();
+
         let span = info_span!("Handling a swarm event");
         let _ = span.enter();
         match event {
             SwarmEvent::Behaviour(NodeEvent::MsgReceived(event)) => {
+                info!("Handling MsgReceived event: start {start_time:?}");
                 if let Err(e) = self.handle_msg(event) {
                     warn!("MsgReceivedError: {e:?}");
                 }
             }
             SwarmEvent::Behaviour(NodeEvent::Kademlia(kad_event)) => {
+                info!("Handling kad event: start {start_time:?}");
                 self.handle_kad_event(kad_event)?;
             }
             SwarmEvent::Behaviour(NodeEvent::Identify(iden)) => {
+                info!("Handling identify event: start {start_time:?}");
                 match *iden {
                     libp2p::identify::Event::Received { peer_id, info } => {
                         debug!(%peer_id, ?info, "identify: received info");
@@ -194,6 +199,8 @@ impl SwarmDriver {
             #[cfg(feature = "local-discovery")]
             SwarmEvent::Behaviour(NodeEvent::Mdns(mdns_event)) => match *mdns_event {
                 mdns::Event::Discovered(list) => {
+                    info!("Handling mdns event: start {start_time:?}");
+
                     if self.local {
                         for (peer_id, addr) in list {
                             // The multiaddr does not contain the peer ID, so add it.
@@ -212,6 +219,8 @@ impl SwarmDriver {
                 }
             },
             SwarmEvent::NewListenAddr { address, .. } => {
+                info!("Handling new listen event: start {start_time:?}");
+
                 let local_peer_id = *self.swarm.local_peer_id();
                 let address = address.with(Protocol::P2p(local_peer_id));
 
@@ -240,6 +249,8 @@ impl SwarmDriver {
                 num_established,
                 ..
             } => {
+                info!("Handling ConnectionEstablished event: start {start_time:?}");
+
                 debug!(%peer_id, num_established, "ConnectionEstablished: {}", endpoint_str(&endpoint));
 
                 if endpoint.is_dialer() {
@@ -253,9 +264,12 @@ impl SwarmDriver {
                 num_established,
                 connection_id,
             } => {
+                info!("Handling ConnectionClosed event: start {start_time:?}");
+
                 debug!(%peer_id, ?connection_id, ?cause, num_established, "ConnectionClosed: {}", endpoint_str(&endpoint));
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
+                info!("Handling OutgoingConnectionError event: start {start_time:?}");
                 error!("OutgoingConnectionError to {peer_id:?} - {error:?}");
                 if let Some(peer_id) = peer_id {
                     // Related errors are: WrongPeerId, ConnectionRefused(TCP), HandshakeTimedOut(QUIC)
@@ -289,30 +303,36 @@ impl SwarmDriver {
                 connection_id,
             } => trace!("Dialing {peer_id:?} on {connection_id:?}"),
 
-            SwarmEvent::Behaviour(NodeEvent::Autonat(event)) => match event {
-                autonat::Event::InboundProbe(e) => debug!("AutoNAT inbound probe: {e:?}"),
-                autonat::Event::OutboundProbe(e) => debug!("AutoNAT outbound probe: {e:?}"),
-                autonat::Event::StatusChanged { old, new } => {
-                    info!("AutoNAT status changed: {old:?} -> {new:?}");
-                    self.send_event(NetworkEvent::NatStatusChanged(new.clone()));
+            SwarmEvent::Behaviour(NodeEvent::Autonat(event)) => {
+                info!("Handling Autonat event: start {start_time:?}");
 
-                    match new {
-                        NatStatus::Public(_addr) => {
-                            // In theory, we could actively push our address to our peers now. But, which peers? All of them?
-                            // Or, should we just wait and let Identify do it on its own? But, what if we are not connected
-                            // to any peers anymore? (E.g., our connections timed out etc)
-                            // let all_peers: Vec<_> = self.swarm.connected_peers().cloned().collect();
-                            // self.swarm.behaviour_mut().identify.push(all_peers);
-                        }
-                        NatStatus::Private => {
-                            // We could just straight out error here. In the future we might try to activate a relay mechanism.
-                        }
-                        NatStatus::Unknown => {}
-                    };
+                match event {
+                    autonat::Event::InboundProbe(e) => debug!("AutoNAT inbound probe: {e:?}"),
+                    autonat::Event::OutboundProbe(e) => debug!("AutoNAT outbound probe: {e:?}"),
+                    autonat::Event::StatusChanged { old, new } => {
+                        info!("AutoNAT status changed: {old:?} -> {new:?}");
+                        self.send_event(NetworkEvent::NatStatusChanged(new.clone()));
+
+                        match new {
+                            NatStatus::Public(_addr) => {
+                                // In theory, we could actively push our address to our peers now. But, which peers? All of them?
+                                // Or, should we just wait and let Identify do it on its own? But, what if we are not connected
+                                // to any peers anymore? (E.g., our connections timed out etc)
+                                // let all_peers: Vec<_> = self.swarm.connected_peers().cloned().collect();
+                                // self.swarm.behaviour_mut().identify.push(all_peers);
+                            }
+                            NatStatus::Private => {
+                                // We could just straight out error here. In the future we might try to activate a relay mechanism.
+                            }
+                            NatStatus::Unknown => {}
+                        };
+                    }
                 }
-            },
+            }
             other => debug!("SwarmEvent has been ignored: {other:?}"),
         }
+
+        trace!("Swarm event took: {:?}", start_time.elapsed());
         Ok(())
     }
 

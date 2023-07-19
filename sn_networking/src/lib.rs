@@ -58,7 +58,7 @@ use std::{
     net::SocketAddr,
     num::NonZeroUsize,
     path::PathBuf,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::sync::{mpsc, oneshot};
 use tracing::warn;
@@ -419,17 +419,25 @@ impl SwarmDriver {
         loop {
             tokio::select! {
                 swarm_event = self.swarm.select_next_some() => {
+                    let start_time = Instant::now();
                     if let Err(err) = self.handle_swarm_events(swarm_event) {
                         warn!("Error while handling swarm event: {err}");
                     }
+                    debug!("swarm_event, elapsed: {:?}", start_time.elapsed());
                 },
                 some_cmd = self.cmd_receiver.recv() => match some_cmd {
                     Some(cmd) => {
+                        let start_time = Instant::now();
+
                         if let Err(err) = self.handle_cmd(cmd) {
                             warn!("Error while handling cmd: {err}");
                         }
+                        debug!("cmd_receiver, elapsed: {:?}", start_time.elapsed());
                     },
-                    None =>  continue,
+                    None =>  {
+                        // no cmd...
+                        continue
+                    },
                 },
             }
         }
