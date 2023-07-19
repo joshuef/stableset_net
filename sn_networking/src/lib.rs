@@ -110,15 +110,7 @@ pub struct SwarmDriver {
     // Do not access this directly to send. Use `send_event` instead.
     // This wraps the call and pushes it off thread so as to be non-blocking
     event_sender: mpsc::Sender<NetworkEvent>,
-    // pending_get_closest_peers: PendingGetClosest,
-    // pending_requests: HashMap<RequestId, Option<oneshot::Sender<Result<Response>>>>,
-    // pending_query: HashMap<QueryId, oneshot::Sender<Result<Record>>>,
-    // pending_record_put: HashMap<QueryId, oneshot::Sender<Result<()>>>,
-    // replication_fetcher: ReplicationFetcher,
     is_local: bool,
-    /// A list of the most recent peers we have dialed ourselves.
-    // dialed_peers: CircularVec<PeerId>,
-    // dead_peers: BTreeSet<PeerId>,
     is_client: bool,
 }
 
@@ -423,9 +415,11 @@ impl SwarmDriver {
     pub async fn run(mut self) {
         let mut pending_get_closest_peers = PendingGetClosest::default();
 
-        // /// A list of the most recent peers we have dialed ourselves.
+        // A list of the most recent peers we have dialed ourselves.
         let mut dialed_peers = CircularVec::new(63);
         let mut dead_peers = BTreeSet::default();
+
+        // Both branches
         let mut pending_query = HashMap::default();
         let mut pending_record_put = HashMap::default();
         let mut pending_requests = HashMap::default();
@@ -433,15 +427,23 @@ impl SwarmDriver {
         // Cmd handler only
         let mut replication_fetcher = Default::default();
 
+        let swarm = &mut self.swarm;
+
+        // Cache existing keys whenever we change to avoid havign to pull mutable swam into the replication fns
+        let mut existing_keys = swarm
+            .behaviour_mut()
+            .kademlia
+            .store_mut()
+            .record_addresses();
+
         loop {
-            let swarm = &mut self.swarm;
             let event_sender = self.event_sender.clone();
             tokio::select! {
                 swarm_event = swarm.select_next_some() => {
                     let start_time = Instant::now();
 
                     // TODO: refactor this out some
-                    let err = Self::handle_swarm_events(swarm, swarm_event,event_sender, &mut pending_query, &mut pending_record_put, &mut pending_get_closest_peers, &mut pending_requests, &mut dialed_peers, &mut dead_peers, self.is_local, self.is_client);
+                    let err = Self::handle_swarm_events(swarm, swarm_event, event_sender, &mut pending_query, &mut pending_record_put, &mut pending_get_closest_peers, &mut pending_requests, &mut dialed_peers, &mut dead_peers, self.is_local, self.is_client);
 
                     if let Err(err) = err {
                         warn!("Error while handling swarm event: {err}");
@@ -451,8 +453,30 @@ impl SwarmDriver {
                 some_cmd = self.cmd_receiver.recv() => match some_cmd {
                     Some(cmd) => {
                         let start_time = Instant::now();
+                        if let SwarmCmd::AddKeysToReplicationFetcher{..} | SwarmCmd::NotifyFetchResult{..} = cmd {
+                            if let Err(err) = Self::handle_replication_cmd(cmd, &mut replication_fetcher, &existing_keys) {
+                                warn!("Error while handling replication cmd: {err}");
+                            }
+                            continue;
+                        }
 
-                        if let Err(err) = Self::handle_cmd(swarm, cmd, event_sender, &mut pending_get_closest_peers, &mut pending_query, &mut replication_fetcher, &mut pending_record_put, &mut pending_requests, self.self_peer_id) {
+
+                        if let SwarmCmd::AddKeysToReplicationFetcher{..} | SwarmCmd::NotifyFetchResult{..} = cmd {
+                            match Self::handle_kad_store_cmd(swarm, cmd, &mut pending_record_put) {
+                                Ok(updated_records) => {
+                                    if let Some(updated_records) = updated_records {
+                                        existing_keys = updated_records;
+                                    }
+                                    continue;
+                                },
+                                Err(err) =>{
+                                    warn!("Error while handling kad store cmd: {err}");
+                                }
+                            }
+                            continue;
+                        }
+
+                        if let Err(err) = Self::handle_cmd(swarm, cmd, event_sender, &mut pending_get_closest_peers, &mut pending_query, &mut pending_record_put, &mut pending_requests, self.self_peer_id) {
                             warn!("Error while handling cmd: {err}");
                         }
                         debug!("cmd_receiver, elapsed: {:?}", start_time.elapsed());
