@@ -11,7 +11,10 @@ use super::{
     record_store::DiskBackedRecordStore,
     SwarmDriver,
 };
-use crate::{multiaddr_is_global, multiaddr_strip_p2p, CLOSE_GROUP_SIZE, IDENTIFY_AGENT_STR};
+use crate::{
+    multiaddr_is_global, multiaddr_strip_p2p, PendingGetClosest, CLOSE_GROUP_SIZE,
+    IDENTIFY_AGENT_STR,
+};
 use itertools::Itertools;
 #[cfg(feature = "local-discovery")]
 use libp2p::mdns;
@@ -125,6 +128,7 @@ impl SwarmDriver {
     pub(super) fn handle_swarm_events<EventError: std::error::Error>(
         &mut self,
         event: SwarmEvent<NodeEvent, EventError>,
+        pending_get_closest_peers: &mut PendingGetClosest,
     ) -> Result<()> {
         let start_time;
         let the_event;
@@ -143,7 +147,7 @@ impl SwarmDriver {
             SwarmEvent::Behaviour(NodeEvent::Kademlia(kad_event)) => {
                 the_event = "kad";
                 start_time = std::time::Instant::now();
-                self.handle_kad_event(kad_event)?;
+                self.handle_kad_event(kad_event, pending_get_closest_peers)?;
             }
             SwarmEvent::Behaviour(NodeEvent::Identify(iden)) => {
                 the_event = "identify";
@@ -255,7 +259,6 @@ impl SwarmDriver {
             SwarmEvent::IncomingConnection { .. } => {
                 the_event = "IncomingConnection";
                 start_time = std::time::Instant::now();
-
             }
             SwarmEvent::ConnectionEstablished {
                 peer_id,
@@ -318,24 +321,22 @@ impl SwarmDriver {
                             self.send_event(NetworkEvent::PeerRemoved(peer_id));
                         }
                         let _ = self.swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
-                        // self.log_kbuckets(&peer_id);
+                        self.log_kbuckets(&peer_id);
                     }
                 }
             }
             SwarmEvent::IncomingConnectionError { .. } => {
                 the_event = "IncomingConnectionError";
                 start_time = std::time::Instant::now();
-                
             }
             SwarmEvent::Dialing {
                 peer_id,
                 connection_id,
             } => {
-                
                 the_event = "Dialing";
                 start_time = std::time::Instant::now();
                 trace!("Dialing {peer_id:?} on {connection_id:?}")
-            },
+            }
 
             SwarmEvent::Behaviour(NodeEvent::Autonat(event)) => {
                 the_event = "Autonat";
@@ -368,14 +369,18 @@ impl SwarmDriver {
                 the_event = "other";
                 start_time = std::time::Instant::now();
                 debug!("SwarmEvent has been ignored: {other:?}")
-            },
+            }
         }
 
         trace!("Swarm event {the_event:?} took: {:?}", start_time.elapsed());
         Ok(())
     }
 
-    fn handle_kad_event(&mut self, kad_event: KademliaEvent) -> Result<()> {
+    fn handle_kad_event(
+        &mut self,
+        kad_event: KademliaEvent,
+        pending_get_closest_peers: &mut PendingGetClosest,
+    ) -> Result<()> {
         match kad_event {
             ref event @ KademliaEvent::OutboundQueryProgressed {
                 id,
@@ -388,7 +393,7 @@ impl SwarmDriver {
                 );
 
                 let (sender, mut current_closest) =
-                    self.pending_get_closest_peers.remove(&id).ok_or_else(|| {
+                    pending_get_closest_peers.remove(&id).ok_or_else(|| {
                         trace!("Can't locate query task {id:?}, shall be completed already.");
                         Error::ReceivedKademliaEventDropped(event.clone())
                     })?;
@@ -404,9 +409,7 @@ impl SwarmDriver {
                         .send(current_closest)
                         .map_err(|_| Error::InternalMsgChannelDropped)?;
                 } else {
-                    let _ = self
-                        .pending_get_closest_peers
-                        .insert(id, (sender, current_closest));
+                    let _ = pending_get_closest_peers.insert(id, (sender, current_closest));
                 }
             }
             KademliaEvent::OutboundQueryProgressed {
@@ -481,7 +484,7 @@ impl SwarmDriver {
                     if self.dead_peers.remove(&peer) {
                         info!("A dead peer {peer:?} joined back with the same ID");
                     }
-                    // self.log_kbuckets(&peer);
+                    self.log_kbuckets(&peer);
                     self.send_event(NetworkEvent::PeerAdded(peer));
                     let connected_peers = self.swarm.connected_peers().count();
 
@@ -491,7 +494,7 @@ impl SwarmDriver {
                 if old_peer.is_some() {
                     info!("Evicted old peer on new peer join: {old_peer:?}");
                     self.send_event(NetworkEvent::PeerRemoved(peer));
-                    // self.log_kbuckets(&peer);
+                    self.log_kbuckets(&peer);
                 }
             }
             KademliaEvent::InboundRequest {

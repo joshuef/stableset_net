@@ -104,7 +104,7 @@ pub struct SwarmDriver {
     // Do not access this directly to send. Use `send_event` instead.
     // This wraps the call and pushes it off thread so as to be non-blocking
     event_sender: mpsc::Sender<NetworkEvent>,
-    pending_get_closest_peers: PendingGetClosest,
+    // pending_get_closest_peers: PendingGetClosest,
     pending_requests: HashMap<RequestId, Option<oneshot::Sender<Result<Response>>>>,
     pending_query: HashMap<QueryId, oneshot::Sender<Result<Record>>>,
     pending_record_put: HashMap<QueryId, oneshot::Sender<Result<()>>>,
@@ -382,7 +382,7 @@ impl SwarmDriver {
             swarm,
             cmd_receiver: swarm_cmd_receiver,
             event_sender: network_event_sender,
-            pending_get_closest_peers: Default::default(),
+            // pending_get_closest_peers: Default::default(),
             pending_requests: Default::default(),
             pending_query: Default::default(),
             pending_record_put: Default::default(),
@@ -416,11 +416,22 @@ impl SwarmDriver {
     /// and command receiver messages, ensuring efficient handling of multiple
     /// asynchronous tasks.
     pub async fn run(mut self) {
+        let mut pending_get_closest_peers = PendingGetClosest::default();
+
+        // pending_requests: HashMap<RequestId, Option<oneshot::Sender<Result<Response>>>>,
+        // pending_query: HashMap<QueryId, oneshot::Sender<Result<Record>>>,
+        // pending_record_put: HashMap<QueryId, oneshot::Sender<Result<()>>>,
+        // replication_fetcher: ReplicationFetcher,
+        // local: bool,
+        // /// A list of the most recent peers we have dialed ourselves.
+        // dialed_peers: CircularVec<PeerId>,
+        // dead_peers: BTreeSet<PeerId>,
+
         loop {
             tokio::select! {
                 swarm_event = self.swarm.select_next_some() => {
                     let start_time = Instant::now();
-                    if let Err(err) = self.handle_swarm_events(swarm_event) {
+                    if let Err(err) = self.handle_swarm_events(swarm_event, &mut pending_get_closest_peers) {
                         warn!("Error while handling swarm event: {err}");
                     }
                     debug!("swarm_event, elapsed: {:?}", start_time.elapsed());
@@ -429,7 +440,7 @@ impl SwarmDriver {
                     Some(cmd) => {
                         let start_time = Instant::now();
 
-                        if let Err(err) = self.handle_cmd(cmd) {
+                        if let Err(err) = self.handle_cmd(cmd, &mut pending_get_closest_peers) {
                             warn!("Error while handling cmd: {err}");
                         }
                         debug!("cmd_receiver, elapsed: {:?}", start_time.elapsed());
