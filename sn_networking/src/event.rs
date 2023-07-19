@@ -151,7 +151,7 @@ impl SwarmDriver {
             SwarmEvent::Behaviour(NodeEvent::Kademlia(kad_event)) => {
                 the_event = "kad";
                 start_time = std::time::Instant::now();
-                self.handle_kad_event(kad_event, pending_get_closest_peers, dead_peers)?;
+                Self::handle_kad_event(kad_event, pending_get_closest_peers, dead_peers)?;
             }
             SwarmEvent::Behaviour(NodeEvent::Identify(iden)) => {
                 the_event = "identify";
@@ -161,10 +161,10 @@ impl SwarmDriver {
                         debug!(%peer_id, ?info, "identify: received info");
 
                         // If we are not local, we care only for peers that we dialed and thus are reachable.
-                        if (self.local || dialed_peers.contains(&peer_id))
+                        if (is_local || dialed_peers.contains(&peer_id))
                             && info.agent_version.starts_with(IDENTIFY_AGENT_STR)
                         {
-                            let addrs = match self.local {
+                            let addrs = match is_local {
                                 true => info.listen_addrs,
                                 // If we're not in local mode, only add globally reachable addresses
                                 false => info
@@ -183,8 +183,7 @@ impl SwarmDriver {
 
                             debug!(%peer_id, ?addrs, "identify: adding addresses to routing table");
                             for multiaddr in addrs.clone() {
-                                let _routing_update = self
-                                    .swarm
+                                let _routing_update = swarm
                                     .behaviour_mut()
                                     .kademlia
                                     .add_address(&peer_id, multiaddr);
@@ -239,8 +238,8 @@ impl SwarmDriver {
                 the_event = "new listen";
                 start_time = std::time::Instant::now();
 
-                let local_peer_id = *self.swarm.local_peer_id();
-                let address = address.with(Protocol::P2p(local_peer_id));
+                let local_peer_id = swarm.local_peer_id();
+                let address = address.with(Protocol::P2p(*local_peer_id));
 
                 // Trigger server mode if we're not a client
                 if !is_client {
@@ -381,7 +380,6 @@ impl SwarmDriver {
     }
 
     fn handle_kad_event(
-        &mut self,
         kad_event: KademliaEvent,
         pending_get_closest_peers: &mut PendingGetClosest,
         dead_peers: &mut BTreeSet<PeerId>
@@ -491,7 +489,7 @@ impl SwarmDriver {
                     }
                     // self.log_kbuckets(&peer);
                     self.send_event(NetworkEvent::PeerAdded(peer));
-                    let connected_peers = self.swarm.connected_peers().count();
+                    let connected_peers = swarm.connected_peers().count();
 
                     info!("Connected peers: {connected_peers}");
                 }
