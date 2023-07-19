@@ -228,7 +228,7 @@ impl SwarmDriver {
                     the_event = "mdns";
                     start_time = std::time::Instant::now();
 
-                    if self.local {
+                    if is_local {
                         for (peer_id, addr) in list {
                             // The multiaddr does not contain the peer ID, so add it.
                             let addr = addr.with(Protocol::P2p(peer_id));
