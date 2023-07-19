@@ -7,21 +7,21 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 
 use super::{error::Error, MsgResponder, NetworkEvent, SwarmDriver};
-use crate::{error::Result, multiaddr_pop_p2p, PendingGetClosest, CLOSE_GROUP_SIZE};
+use crate::{error::Result, multiaddr_pop_p2p, PendingGetClosest, CLOSE_GROUP_SIZE, event::NodeBehaviour};
 use libp2p::{
     kad::{store::RecordStore, KBucketDistance as Distance, QueryId, Quorum, Record, RecordKey},
     swarm::{
         dial_opts::{DialOpts, PeerCondition},
         DialError,
     },
-    Multiaddr, PeerId,
+    Multiaddr, PeerId, Swarm,
 };
 use sn_protocol::{
     messages::{Request, Response},
     NetworkAddress,
 };
 use std::collections::{HashMap, HashSet};
-use tokio::sync::{oneshot,mpsc};
+use tokio::sync::{mpsc, oneshot};
 
 /// Commands to send to the Swarm
 #[allow(clippy::large_enum_variant)]
@@ -284,7 +284,7 @@ impl SwarmDriver {
             SwarmCmd::Dial { addr, sender } => {
                 the_cmd = "Dial";
                 start_time = std::time::Instant::now();
-                let _ = match self.dial(addr) {
+                let _ = match Self::dial(&mut self.swarm, addr) {
                     Ok(_) => sender.send(Ok(())),
                     Err(e) => sender.send(Err(e.into())),
                 };
@@ -338,10 +338,13 @@ impl SwarmDriver {
                 if peer == *self.swarm.local_peer_id() {
                     trace!("Sending request to self");
 
-                    Self::send_event(event_sender,NetworkEvent::RequestReceived {
-                        req,
-                        channel: MsgResponder::FromSelf(sender),
-                    });
+                    Self::send_event(
+                        event_sender,
+                        NetworkEvent::RequestReceived {
+                            req,
+                            channel: MsgResponder::FromSelf(sender),
+                        },
+                    );
                 } else {
                     let request_id = self
                         .swarm
@@ -367,7 +370,10 @@ impl SwarmDriver {
                         None => {
                             // responses that are not awaited at the call site must be handled
                             // separately
-                            Self::send_event(event_sender,NetworkEvent::ResponseReceived { res: resp });
+                            Self::send_event(
+                                event_sender,
+                                NetworkEvent::ResponseReceived { res: resp },
+                            );
                         }
                     }
                 }
@@ -405,7 +411,7 @@ impl SwarmDriver {
 
     /// Dials the given multiaddress. If address contains a peer ID, simultaneous
     /// dials to that peer are prevented.
-    pub(crate) fn dial(&mut self, mut addr: Multiaddr) -> Result<(), DialError> {
+    pub(crate) fn dial(swarm: &mut Swarm<NodeBehaviour>, mut addr: Multiaddr) -> Result<(), DialError> {
         debug!(%addr, "Dialing manually");
 
         let peer_id = multiaddr_pop_p2p(&mut addr);
@@ -418,6 +424,6 @@ impl SwarmDriver {
             None => DialOpts::unknown_peer_id().address(addr).build(),
         };
 
-        self.swarm.dial(opts)
+        swarm.dial(opts)
     }
 }

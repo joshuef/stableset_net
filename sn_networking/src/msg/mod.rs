@@ -8,13 +8,13 @@
 
 use crate::{
     error::{Error, Result},
-    MsgResponder, NetworkEvent, SwarmDriver, event,
+    event, MsgResponder, NetworkEvent, SwarmDriver,
 };
 
 use libp2p::request_response::{self, Message, RequestId};
 use sn_protocol::messages::{Request, Response};
 use std::collections::HashMap;
-use tokio::sync::{oneshot, mpsc};
+use tokio::sync::{mpsc, oneshot};
 use tracing::{trace, warn};
 impl SwarmDriver {
     /// Forwards `Request` to the upper layers using `Sender<NetworkEvent>`. Sends `Response` to the peers
@@ -33,10 +33,13 @@ impl SwarmDriver {
                     ..
                 } => {
                     trace!("Received request with id: {request_id:?}, req: {request:?}");
-                    Self::send_event(event_sender,NetworkEvent::RequestReceived {
-                        req: request,
-                        channel: MsgResponder::FromPeer(channel),
-                    })
+                    Self::send_event(
+                        event_sender,
+                        NetworkEvent::RequestReceived {
+                            req: request,
+                            channel: MsgResponder::FromPeer(channel),
+                        },
+                    )
                 }
                 Message::Response {
                     request_id,
@@ -55,7 +58,10 @@ impl SwarmDriver {
                             None => {
                                 // responses that are not awaited at the call site must be handled
                                 // separately
-                                Self::send_event(event_sender, NetworkEvent::ResponseReceived { res: response });
+                                Self::send_event(
+                                    event_sender,
+                                    NetworkEvent::ResponseReceived { res: response },
+                                );
                             }
                         }
                     } else {

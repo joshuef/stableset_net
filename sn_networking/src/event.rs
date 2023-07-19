@@ -33,7 +33,7 @@ use sn_protocol::{
     NetworkAddress,
 };
 use std::collections::{BTreeSet, HashMap, HashSet};
-use tokio::sync::{oneshot, mpsc};
+use tokio::sync::{mpsc, oneshot};
 use tracing::{info, warn};
 
 #[derive(NetworkBehaviour)]
@@ -235,7 +235,7 @@ impl SwarmDriver {
 
                             info!(%addr, "mDNS node discovered and dialing");
 
-                            if let Err(err) = self.dial(addr.clone()) {
+                            if let Err(err) = Self::dial(swarm, addr.clone()) {
                                 warn!(%addr, "mDNS node dial error: {err:?}");
                             }
                         }
@@ -506,7 +506,7 @@ impl SwarmDriver {
                         info!("A dead peer {peer:?} joined back with the same ID");
                     }
                     // self.log_kbuckets(&peer);
-                    Self::send_event(event_sender, NetworkEvent::PeerAdded(peer));
+                    Self::send_event(event_sender.clone(), NetworkEvent::PeerAdded(peer));
                     let connected_peers = swarm.connected_peers().count();
 
                     info!("Connected peers: {connected_peers}");
