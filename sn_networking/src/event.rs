@@ -25,7 +25,7 @@ use libp2p::{
     },
     multiaddr::Protocol,
     request_response::{self, RequestId, ResponseChannel as PeerResponseChannel},
-    swarm::{behaviour::toggle::Toggle, DialError, NetworkBehaviour, SwarmEvent},
+    swarm::{behaviour::toggle::Toggle, ConnectionId, DialError, NetworkBehaviour, SwarmEvent},
     Multiaddr, PeerId,
 };
 use sn_protocol::{
@@ -127,6 +127,47 @@ pub enum NetworkEvent {
 
 impl SwarmDriver {
     // Handle `SwarmEvents`
+    pub(super) fn handle_swarm_outgoing_conn_error(
+        swarm: &mut libp2p::Swarm<NodeBehaviour>,
+        event_sender: mpsc::Sender<NetworkEvent>,
+        peer_id: PeerId,
+        connection_id: ConnectionId,
+        error: DialError,
+        dead_peers: &mut BTreeSet<PeerId>,
+    ) -> Result<()> {
+        error!("OutgoingConnectionError to {peer_id:?} on {connection_id:?} - {error:?}");
+        // Related errors are: WrongPeerId, ConnectionRefused(TCP), HandshakeTimedOut(QUIC)
+        debug!("Outgoing before stringing...");
+        let err_string = format!("{error:?}");
+        debug!("Outgoing before matching...");
+        let is_wrong_id = err_string.contains("WrongPeerId");
+
+        debug!("Outgoing ongoing...");
+        let is_all_connection_failed = if let DialError::Transport(ref errors) = error {
+            debug!("Outgoing ongoing before iter...");
+            errors.iter().all(|(_, error)| {
+                let err_string = format!("{error:?}");
+                err_string.contains("ConnectionRefused")
+            }) || errors.iter().all(|(_, error)| {
+                let err_string = format!("{error:?}");
+                err_string.contains("HandshakeTimedOut")
+            })
+        } else {
+            false
+        };
+        debug!("Outgoing ongoing after iter...");
+        if is_wrong_id || is_all_connection_failed {
+            info!("Detected dead peer {peer_id:?}");
+            if !dead_peers.contains(&peer_id) {
+                let _ = dead_peers.insert(peer_id);
+                Self::send_event(event_sender, NetworkEvent::PeerRemoved(peer_id));
+            }
+            let _ = swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
+            // self.log_kbuckets(&peer_id);
+        }
+
+        Ok(())
+    }
     pub(super) fn handle_swarm_connectivity_events<EventError: std::error::Error>(
         swarm: &mut libp2p::Swarm<NodeBehaviour>,
         event: SwarmEvent<NodeEvent, EventError>,

@@ -464,14 +464,20 @@ impl SwarmDriver {
                                 &mut pending_record_put,
                                 &mut dead_peers,
                             ) {
-                                warn!("Error while handling Kademlia event: {err}");
+                                error!("Error while handling Kademlia event: {err}");
                             }
                         }
+                        SwarmEvent::OutgoingConnectionError{peer_id: Some(failed_peer_id), error, connection_id } => {
+                            the_branch = "outgoing error";
+                            start_time = std::time::Instant::now();
+                            if let Err(e) = Self::handle_swarm_outgoing_conn_error(swarm, event_sender, failed_peer_id, connection_id, error, &mut dead_peers) {
+                                error!("Error while handling outgoing connection error: {e:?}");
+                                                    }
+                                                }
                         SwarmEvent::Behaviour(NodeEvent::Autonat(_)) |
                         SwarmEvent::NewListenAddr{..} |
                         SwarmEvent::ConnectionEstablished{..} |
                         SwarmEvent::ConnectionClosed{..} |
-                        SwarmEvent::OutgoingConnectionError{..} |
                         SwarmEvent::Dialing{..} |
                         SwarmEvent::Behaviour(NodeEvent::Identify(_)) => {
                             the_branch = "SwarmConnectivity";
@@ -489,6 +495,7 @@ impl SwarmDriver {
                                 warn!("Error while handling swarm event: {err}");
               }
                         }
+                        SwarmEvent::OutgoingConnectionError{peer_id: None, .. } |
                         SwarmEvent::ExpiredListenAddr { .. } |
                         SwarmEvent::ListenerClosed { .. } |
                         SwarmEvent::ListenerError { .. } |
@@ -503,7 +510,7 @@ impl SwarmDriver {
 
                     }
                     // TODO: refactor this out some
-                    debug!("swarm_event, {the_branch} elapsed: {:?}", start_time.elapsed());
+                    debug!("swarm_event, {the_branch} took: {:?}", start_time.elapsed());
                 },
                 some_cmd = self.cmd_receiver.recv() => match some_cmd {
                     Some(cmd) => {
