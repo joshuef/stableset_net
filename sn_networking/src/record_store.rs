@@ -94,11 +94,6 @@ impl DiskBackedRecordStore {
         }
     }
 
-    /// Returns `true` if the `Key` is present locally
-    pub fn contains(&self, key: &Key) -> bool {
-        self.records.contains(key)
-    }
-
     /// Retains the records satisfying a predicate.
     pub fn retain<F>(&mut self, predicate: F)
     where
@@ -112,22 +107,6 @@ impl DiskBackedRecordStore {
             .collect::<Vec<_>>();
 
         to_be_removed.iter().for_each(|key| self.remove(key));
-    }
-
-    /// Returns the list of keys that are within the provided distance to the target
-    pub fn get_record_keys_closest_to_targetrrrr(
-        &mut self,
-        target: KBucketKey<Vec<u8>>,
-        distance_bar: Distance,
-    ) -> Vec<Key> {
-        self.records
-            .iter()
-            .filter(|key| {
-                let record_key = KBucketKey::from(key.to_vec());
-                target.distance(&record_key) < distance_bar
-            })
-            .cloned()
-            .collect()
     }
 
     /// Setup the distance range.

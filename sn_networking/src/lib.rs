@@ -479,14 +479,14 @@ impl SwarmDriver {
                         SwarmEvent::Behaviour(NodeEvent::Identify(_)) => {
                             the_branch = "SwarmConnectivity";
                             start_time = std::time::Instant::now();
-                            if let Err(err) = Self::handle_swarm_connectivity_events(swarm, swarm_event, event_sender, &mut pending_query, &mut pending_record_put, &mut &mut pending_get_closest_peers, &mut pending_requests, &mut dialed_peers, &mut dead_peers, self.is_local, self.is_client) {
+                            if let Err(err) = Self::handle_swarm_connectivity_events(swarm, swarm_event, event_sender, &mut dialed_peers, &mut dead_peers, self.is_local, self.is_client) {
                                               warn!("Error while handling swarm event: {err}");
                             }
                             // continue;
                         }
                         #[cfg(feature = "local-discovery")]
                         SwarmEvent::Behaviour(NodeEvent::Mdns(_)) =>{
-                            if let Err(err) = Self::handle_swarm_connectivity_events(swarm, swarm_event, event_sender, &mut pending_query, &mut pending_record_put, &mut &mut pending_get_closest_peers, &mut pending_requests, &mut dialed_peers, &mut dead_peers, self.is_local, self.is_client) {
+                            if let Err(err) = Self::handle_swarm_connectivity_events(swarm, swarm_event, event_sender, &mut dialed_peers, &mut dead_peers, self.is_local, self.is_client) {
                                 warn!("Error while handling swarm event: {err}");
               }
                         }
