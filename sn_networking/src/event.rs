@@ -436,7 +436,7 @@ impl SwarmDriver {
         pending_get_closest_peers: &mut PendingGetClosest,
         pending_query: &mut HashMap<QueryId, oneshot::Sender<Result<Record>>>,
         pending_record_put: &mut HashMap<QueryId, oneshot::Sender<Result<()>>>,
-        dead_peers: &mut BTreeSet<PeerId>,
+        // dead_peers: &mut BTreeSet<PeerId>,
     ) -> Result<()> {
         match kad_event {
             ref event @ KademliaEvent::OutboundQueryProgressed {
@@ -531,29 +531,29 @@ impl SwarmDriver {
                 }
                 // TODO: send an error response back?
             }
-            KademliaEvent::RoutingUpdated {
-                peer,
-                is_new_peer,
-                old_peer,
-                ..
-            } => {
-                if is_new_peer {
-                    if dead_peers.remove(&peer) {
-                        info!("A dead peer {peer:?} joined back with the same ID");
-                    }
-                    // self.log_kbuckets(&peer);
-                    Self::send_event(event_sender.clone(), NetworkEvent::PeerAdded(peer));
-                    // let connected_peers = swarm.connected_peers().count();
+            // KademliaEvent::RoutingUpdated {
+            //     peer,
+            //     is_new_peer,
+            //     old_peer,
+            //     ..
+            // } => {
+            //     if is_new_peer {
+            //         if dead_peers.remove(&peer) {
+            //             info!("A dead peer {peer:?} joined back with the same ID");
+            //         }
+            //         // self.log_kbuckets(&peer);
+            //         Self::send_event(event_sender.clone(), NetworkEvent::PeerAdded(peer));
+            //         // let connected_peers = swarm.connected_peers().count();
 
-                    // info!("Connected peers: {connected_peers}");
-                }
+            //         // info!("Connected peers: {connected_peers}");
+            //     }
 
-                if old_peer.is_some() {
-                    info!("Evicted old peer on new peer join: {old_peer:?}");
-                    Self::send_event(event_sender, NetworkEvent::PeerRemoved(peer));
-                    // self.log_kbuckets(&peer);
-                }
-            }
+            //     if old_peer.is_some() {
+            //         info!("Evicted old peer on new peer join: {old_peer:?}");
+            //         Self::send_event(event_sender, NetworkEvent::PeerRemoved(peer));
+            //         // self.log_kbuckets(&peer);
+            //     }
+            // }
             KademliaEvent::InboundRequest {
                 request: InboundRequest::PutRecord { .. },
             } => {

@@ -40,8 +40,8 @@ use libp2p::mdns;
 use libp2p::{
     identity::Keypair,
     kad::{
-        KBucketDistance as Distance, KBucketKey, Kademlia, KademliaConfig, QueryId, Record,
-        RecordKey,
+        KBucketDistance as Distance, KBucketKey, Kademlia, KademliaConfig, KademliaEvent, QueryId,
+        Record, RecordKey,
     },
     multiaddr::Protocol,
     request_response::{self, Config as RequestResponseConfig, ProtocolSupport, RequestId},
@@ -453,6 +453,27 @@ impl SwarmDriver {
                             }
                             info!("Actually ending msg received handling");
                         }
+                        SwarmEvent::Behaviour(NodeEvent::Kademlia(KademliaEvent::RoutingUpdated{peer, is_new_peer, old_peer, ..})) => {
+
+                            the_branch = "KadRoutingUpdated";
+                            start_time = std::time::Instant::now();
+                            if is_new_peer {
+                                if dead_peers.remove(&peer) {
+                                    info!("A dead peer {peer:?} joined back with the same ID");
+                                }
+                                // self.log_kbuckets(&peer);
+                                Self::send_event(event_sender.clone(), NetworkEvent::PeerAdded(peer));
+                                // let connected_peers = swarm.connected_peers().count();
+
+                                // info!("Connected peers: {connected_peers}");
+                            }
+
+                            if old_peer.is_some() {
+                                info!("Evicted old peer on new peer join: {old_peer:?}");
+                                Self::send_event(event_sender, NetworkEvent::PeerRemoved(peer));
+                                // self.log_kbuckets(&peer);
+                            }
+                        }
                         SwarmEvent::Behaviour(NodeEvent::Kademlia(kad_event)) => {
                             the_branch = "kad";
                             start_time = std::time::Instant::now();
@@ -462,7 +483,7 @@ impl SwarmDriver {
                                 &mut pending_get_closest_peers,
                                 &mut pending_query,
                                 &mut pending_record_put,
-                                &mut dead_peers,
+                                // &mut dead_peers,
                             ) {
                                 error!("Error while handling Kademlia event: {err}");
                             }
@@ -510,7 +531,7 @@ impl SwarmDriver {
 
                     }
                     // TODO: refactor this out some
-                    debug!("swarm_event, {the_branch} took: {:?}", start_time.elapsed());
+                    debug!("swarm_event, {the_branch:?} took: {:?}", start_time.elapsed());
                 },
                 some_cmd = self.cmd_receiver.recv() => match some_cmd {
                     Some(cmd) => {
