@@ -390,7 +390,6 @@ impl SwarmDriver {
     }
 
     pub(super) fn handle_kad_event(
-        swarm: &mut libp2p::Swarm<NodeBehaviour>,
         kad_event: KademliaEvent,
         event_sender: mpsc::Sender<NetworkEvent>,
         pending_get_closest_peers: &mut PendingGetClosest,

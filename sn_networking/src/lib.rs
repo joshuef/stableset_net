@@ -457,7 +457,6 @@ impl SwarmDriver {
                             the_branch = "kad";
                             start_time = std::time::Instant::now();
                             if let Err(err) = Self::handle_kad_event(
-                                swarm,
                                 kad_event,
                                 event_sender,
                                 &mut pending_get_closest_peers,
@@ -468,8 +467,6 @@ impl SwarmDriver {
                                 warn!("Error while handling Kademlia event: {err}");
                             }
                         }
-                        SwarmEvent::Behaviour(NodeEvent::Identify(_)) |
-
                         SwarmEvent::Behaviour(NodeEvent::Autonat(_)) |
                         SwarmEvent::NewListenAddr{..} |
                         SwarmEvent::ConnectionEstablished{..} |
@@ -486,6 +483,8 @@ impl SwarmDriver {
                         }
                         #[cfg(feature = "local-discovery")]
                         SwarmEvent::Behaviour(NodeEvent::Mdns(_)) =>{
+                                         the_branch = "Mdns";
+                            start_time = std::time::Instant::now();
                             if let Err(err) = Self::handle_swarm_connectivity_events(swarm, swarm_event, event_sender, &mut dialed_peers, &mut dead_peers, self.is_local, self.is_client) {
                                 warn!("Error while handling swarm event: {err}");
               }
@@ -504,7 +503,7 @@ impl SwarmDriver {
 
                     }
                     // TODO: refactor this out some
-                    debug!("swarm_event, elapsed: {:?}", start_time.elapsed());
+                    debug!("swarm_event, {the_branch} elapsed: {:?}", start_time.elapsed());
                 },
                 some_cmd = self.cmd_receiver.recv() => match some_cmd {
                     Some(cmd) => {
