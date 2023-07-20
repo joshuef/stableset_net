@@ -27,7 +27,7 @@ use self::{
     circular_vec::CircularVec,
     cmd::SwarmCmd,
     error::Result,
-    event::NodeBehaviour,
+    event::{NodeBehaviour, NodeEvent},
     record_store::{
         DiskBackedRecordStore, DiskBackedRecordStoreConfig, REPLICATION_INTERVAL_LOWER_BOUND,
         REPLICATION_INTERVAL_UPPER_BOUND,
@@ -426,7 +426,6 @@ impl SwarmDriver {
 
         // Cmd handler only
         let mut replication_fetcher = Default::default();
-        
 
         let swarm = &mut self.swarm;
 
@@ -441,14 +440,70 @@ impl SwarmDriver {
             let event_sender = self.event_sender.clone();
             tokio::select! {
                 swarm_event = swarm.select_next_some() => {
-                    let start_time = Instant::now();
+                    let start_time;
+                    let the_branch;
 
-                    // TODO: refactor this out some
-                    let err = Self::handle_swarm_events(swarm, swarm_event, event_sender, &mut pending_query, &mut pending_record_put, &mut pending_get_closest_peers, &mut pending_requests, &mut dialed_peers, &mut dead_peers, self.is_local, self.is_client);
+                    match swarm_event {
+                        SwarmEvent::Behaviour(NodeEvent::MsgReceived(msg)) => {
+                            the_branch = "MsgReceived";
+                            start_time = std::time::Instant::now();
+                            info!("Actually starting msg received handling");
+                            if let Err(e) = Self::handle_msg(msg, event_sender, &mut pending_requests) {
+                                warn!("MsgReceivedError: {e:?}");
+                            }
+                            info!("Actually ending msg received handling");
+                        }
+                        SwarmEvent::Behaviour(NodeEvent::Kademlia(kad_event)) => {
+                            the_branch = "kad";
+                            start_time = std::time::Instant::now();
+                            if let Err(err) = Self::handle_kad_event(
+                                swarm,
+                                kad_event,
+                                event_sender,
+                                &mut pending_get_closest_peers,
+                                &mut pending_query,
+                                &mut pending_record_put,
+                                &mut dead_peers,
+                            ) {
+                                warn!("Error while handling Kademlia event: {err}");
+                            }
+                        }
+                        SwarmEvent::Behaviour(NodeEvent::Identify(_)) |
 
-                    if let Err(err) = err {
-                        warn!("Error while handling swarm event: {err}");
+                        SwarmEvent::Behaviour(NodeEvent::Autonat(_)) |
+                        SwarmEvent::NewListenAddr{..} |
+                        SwarmEvent::ConnectionEstablished{..} |
+                        SwarmEvent::ConnectionClosed{..} |
+                        SwarmEvent::OutgoingConnectionError{..} |
+                        SwarmEvent::Dialing{..} |
+                        SwarmEvent::Behaviour(NodeEvent::Identify(_)) => {
+                            the_branch = "SwarmConnectivity";
+                            start_time = std::time::Instant::now();
+                            if let Err(err) = Self::handle_swarm_connectivity_events(swarm, swarm_event, event_sender, &mut pending_query, &mut pending_record_put, &mut &mut pending_get_closest_peers, &mut pending_requests, &mut dialed_peers, &mut dead_peers, self.is_local, self.is_client) {
+                                              warn!("Error while handling swarm event: {err}");
+                            }
+                            // continue;
+                        }
+                        #[cfg(feature = "local-discovery")]
+                        SwarmEvent::Behaviour(NodeEvent::Mdns(_)) =>{
+                            if let Err(err) = Self::handle_swarm_connectivity_events(swarm, swarm_event, event_sender, &mut pending_query, &mut pending_record_put, &mut &mut pending_get_closest_peers, &mut pending_requests, &mut dialed_peers, &mut dead_peers, self.is_local, self.is_client) {
+                                warn!("Error while handling swarm event: {err}");
+              }
+                        }
+                        SwarmEvent::ExpiredListenAddr { .. } |
+                        SwarmEvent::ListenerClosed { .. } |
+                        SwarmEvent::ListenerError { .. } |
+                        SwarmEvent::IncomingConnection { .. } |
+                        SwarmEvent::IncomingConnectionError{..} => {
+                            the_branch = "unhandled";
+                            start_time = std::time::Instant::now();
+                            // unhandled
+                        }
+                        // SwarmEvent::IncomingConnectionError { .. } |
+
+
                     }
+                    // TODO: refactor this out some
                     debug!("swarm_event, elapsed: {:?}", start_time.elapsed());
                 },
                 some_cmd = self.cmd_receiver.recv() => match some_cmd {

@@ -127,7 +127,7 @@ pub enum NetworkEvent {
 
 impl SwarmDriver {
     // Handle `SwarmEvents`
-    pub(super) fn handle_swarm_events<EventError: std::error::Error>(
+    pub(super) fn handle_swarm_connectivity_events<EventError: std::error::Error>(
         swarm: &mut libp2p::Swarm<NodeBehaviour>,
         event: SwarmEvent<NodeEvent, EventError>,
         event_sender: mpsc::Sender<NetworkEvent>,
@@ -145,28 +145,28 @@ impl SwarmDriver {
         // start_time = std::time::Instant::now();
         info!("Handling a swarm event");
         match event {
-            SwarmEvent::Behaviour(NodeEvent::MsgReceived(event)) => {
-                the_event = "MsgReceived";
-                start_time = std::time::Instant::now();
-                info!("Actually starting msg received handling");
-                if let Err(e) = Self::handle_msg(event, event_sender, pending_requests) {
-                    warn!("MsgReceivedError: {e:?}");
-                }
-                info!("Actually ending msg received handling");
-            }
-            SwarmEvent::Behaviour(NodeEvent::Kademlia(kad_event)) => {
-                the_event = "kad";
-                start_time = std::time::Instant::now();
-                Self::handle_kad_event(
-                    swarm,
-                    kad_event,
-                    event_sender,
-                    pending_get_closest_peers,
-                    pending_query,
-                    pending_record_put,
-                    dead_peers,
-                )?;
-            }
+            // SwarmEvent::Behaviour(NodeEvent::MsgReceived(event)) => {
+            //     the_event = "MsgReceived";
+            //     start_time = std::time::Instant::now();
+            //     info!("Actually starting msg received handling");
+            //     if let Err(e) = Self::handle_msg(event, event_sender, pending_requests) {
+            //         warn!("MsgReceivedError: {e:?}");
+            //     }
+            //     info!("Actually ending msg received handling");
+            // }
+            // SwarmEvent::Behaviour(NodeEvent::Kademlia(kad_event)) => {
+            //     the_event = "kad";
+            //     start_time = std::time::Instant::now();
+            //     Self::handle_kad_event(
+            //         swarm,
+            //         kad_event,
+            //         event_sender,
+            //         pending_get_closest_peers,
+            //         pending_query,
+            //         pending_record_put,
+            //         dead_peers,
+            //     )?;
+            // }
             SwarmEvent::Behaviour(NodeEvent::Identify(iden)) => {
                 the_event = "identify";
                 start_time = std::time::Instant::now();
@@ -273,10 +273,10 @@ impl SwarmDriver {
 
                 info!("Local node is listening on {address:?}");
             }
-            SwarmEvent::IncomingConnection { .. } => {
-                the_event = "IncomingConnection";
-                start_time = std::time::Instant::now();
-            }
+            // SwarmEvent::IncomingConnection { .. } => {
+            //     the_event = "IncomingConnection";
+            //     start_time = std::time::Instant::now();
+            // }
             SwarmEvent::ConnectionEstablished {
                 peer_id,
                 endpoint,
@@ -383,7 +383,7 @@ impl SwarmDriver {
                 }
             }
             other => {
-                the_event = "other";
+                the_event = "OTHER SwarmEvent";
                 start_time = std::time::Instant::now();
                 debug!("SwarmEvent has been ignored: {other:?}")
             }
@@ -393,7 +393,7 @@ impl SwarmDriver {
         Ok(())
     }
 
-    fn handle_kad_event(
+    pub(super) fn handle_kad_event(
         swarm: &mut libp2p::Swarm<NodeBehaviour>,
         kad_event: KademliaEvent,
         event_sender: mpsc::Sender<NetworkEvent>,
@@ -507,9 +507,9 @@ impl SwarmDriver {
                     }
                     // self.log_kbuckets(&peer);
                     Self::send_event(event_sender.clone(), NetworkEvent::PeerAdded(peer));
-                    let connected_peers = swarm.connected_peers().count();
+                    // let connected_peers = swarm.connected_peers().count();
 
-                    info!("Connected peers: {connected_peers}");
+                    // info!("Connected peers: {connected_peers}");
                 }
 
                 if old_peer.is_some() {

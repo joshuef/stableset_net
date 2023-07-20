@@ -189,7 +189,7 @@ impl SwarmDriver {
             SwarmCmd::AddKeysToReplicationFetcher { peer, keys, sender } => {
                 the_cmd = "AddKeysToReplicationFetcher";
                 start_time = std::time::Instant::now();
-  
+
                 // remove any keys that we already have from replication fetcher
                 replication_fetcher.remove_held_data(&existing_keys);
 
