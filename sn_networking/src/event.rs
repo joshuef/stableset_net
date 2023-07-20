@@ -173,7 +173,7 @@ impl SwarmDriver {
         event: SwarmEvent<NodeEvent, EventError>,
         event_sender: mpsc::Sender<NetworkEvent>,
         dialed_peers: &mut CircularVec<PeerId>,
-        dead_peers: &mut BTreeSet<PeerId>,
+        // dead_peers: &mut BTreeSet<PeerId>,
         is_local: bool,
         is_client: bool,
     ) -> Result<()> {
@@ -314,23 +314,23 @@ impl SwarmDriver {
             //     the_event = "IncomingConnection";
             //     start_time = std::time::Instant::now();
             // }
-            SwarmEvent::ConnectionEstablished {
-                peer_id,
-                endpoint,
-                num_established,
-                ..
-            } => {
-                the_event = "ConnectionEstablished";
-                start_time = std::time::Instant::now();
+            // SwarmEvent::ConnectionEstablished {
+            //     peer_id,
+            //     endpoint,
+            //     num_established,
+            //     ..
+            // } => {
+            //     the_event = "ConnectionEstablished";
+            //     start_time = std::time::Instant::now();
 
-                debug!(%peer_id, num_established, "ConnectionEstablished: {}", endpoint_str(&endpoint));
+            //     debug!(%peer_id, num_established, "ConnectionEstablished: {}", endpoint_str(&endpoint));
 
-                if endpoint.is_dialer() {
-                    debug!("is dialler");
-                    dialed_peers.push(peer_id);
-                    debug!("is dialler pushed");
-                }
-            }
+            //     if endpoint.is_dialer() {
+            //         debug!("is dialler");
+            //         dialed_peers.push(peer_id);
+            //         debug!("is dialler pushed");
+            //     }
+            // }
             SwarmEvent::ConnectionClosed {
                 peer_id,
                 endpoint,
@@ -343,42 +343,42 @@ impl SwarmDriver {
 
                 debug!(%peer_id, ?connection_id, ?cause, num_established, "ConnectionClosed: {}", endpoint_str(&endpoint));
             }
-            SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
-                the_event = "OutgoingConnectionError";
-                start_time = std::time::Instant::now();
-                error!("OutgoingConnectionError to {peer_id:?} - {error:?}");
-                if let Some(peer_id) = peer_id {
-                    // Related errors are: WrongPeerId, ConnectionRefused(TCP), HandshakeTimedOut(QUIC)
-                    debug!("Outgoing before stringing...");
-                    let err_string = format!("{error:?}");
-                    debug!("Outgoing before matching...");
-                    let is_wrong_id = err_string.contains("WrongPeerId");
+            // SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
+            //     the_event = "OutgoingConnectionError";
+            //     start_time = std::time::Instant::now();
+            //     error!("OutgoingConnectionError to {peer_id:?} - {error:?}");
+            //     if let Some(peer_id) = peer_id {
+            //         // Related errors are: WrongPeerId, ConnectionRefused(TCP), HandshakeTimedOut(QUIC)
+            //         debug!("Outgoing before stringing...");
+            //         let err_string = format!("{error:?}");
+            //         debug!("Outgoing before matching...");
+            //         let is_wrong_id = err_string.contains("WrongPeerId");
 
-                    debug!("Outgoing ongoing...");
-                    let is_all_connection_failed = if let DialError::Transport(ref errors) = error {
-                        debug!("Outgoing ongoing before iter...");
-                        errors.iter().all(|(_, error)| {
-                            let err_string = format!("{error:?}");
-                            err_string.contains("ConnectionRefused")
-                        }) || errors.iter().all(|(_, error)| {
-                            let err_string = format!("{error:?}");
-                            err_string.contains("HandshakeTimedOut")
-                        })
-                    } else {
-                        false
-                    };
-                    debug!("Outgoing ongoing after iter...");
-                    if is_wrong_id || is_all_connection_failed {
-                        info!("Detected dead peer {peer_id:?}");
-                        if !dead_peers.contains(&peer_id) {
-                            let _ = dead_peers.insert(peer_id);
-                            Self::send_event(event_sender, NetworkEvent::PeerRemoved(peer_id));
-                        }
-                        let _ = swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
-                        // self.log_kbuckets(&peer_id);
-                    }
-                }
-            }
+            //         debug!("Outgoing ongoing...");
+            //         let is_all_connection_failed = if let DialError::Transport(ref errors) = error {
+            //             debug!("Outgoing ongoing before iter...");
+            //             errors.iter().all(|(_, error)| {
+            //                 let err_string = format!("{error:?}");
+            //                 err_string.contains("ConnectionRefused")
+            //             }) || errors.iter().all(|(_, error)| {
+            //                 let err_string = format!("{error:?}");
+            //                 err_string.contains("HandshakeTimedOut")
+            //             })
+            //         } else {
+            //             false
+            //         };
+            //         debug!("Outgoing ongoing after iter...");
+            //         if is_wrong_id || is_all_connection_failed {
+            //             info!("Detected dead peer {peer_id:?}");
+            //             if !dead_peers.contains(&peer_id) {
+            //                 let _ = dead_peers.insert(peer_id);
+            //                 Self::send_event(event_sender, NetworkEvent::PeerRemoved(peer_id));
+            //             }
+            //             let _ = swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
+            //             // self.log_kbuckets(&peer_id);
+            //         }
+            //     }
+            // }
             SwarmEvent::IncomingConnectionError { .. } => {
                 the_event = "IncomingConnectionError";
                 start_time = std::time::Instant::now();

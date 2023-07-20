@@ -429,6 +429,9 @@ impl SwarmDriver {
 
         let swarm = &mut self.swarm;
 
+        let is_local = self.is_local;
+        let is_client = self.is_client;
+
         // Cache existing keys whenever we change to avoid havign to pull mutable swam into the replication fns
         let mut existing_keys = swarm
             .behaviour_mut()
@@ -488,22 +491,36 @@ impl SwarmDriver {
                                 error!("Error while handling Kademlia event: {err}");
                             }
                         }
+                        SwarmEvent::ConnectionEstablished{  peer_id,
+                            endpoint,
+                            num_established,
+                            ..} => {
+                                the_branch = "ConnectionEstablished";
+                                start_time = std::time::Instant::now();
+                
+                                debug!(%peer_id, num_established, "ConnectionEstablished: {}", endpoint_str(&endpoint));
+                
+                                if endpoint.is_dialer() {
+                                    debug!("is dialler");
+                                    dialed_peers.push(peer_id);
+                                    debug!("is dialler pushed");
+                                }
+                        }
                         SwarmEvent::OutgoingConnectionError{peer_id: Some(failed_peer_id), error, connection_id } => {
                             the_branch = "outgoing error";
                             start_time = std::time::Instant::now();
                             if let Err(e) = Self::handle_swarm_outgoing_conn_error(swarm, event_sender, failed_peer_id, connection_id, error, &mut dead_peers) {
                                 error!("Error while handling outgoing connection error: {e:?}");
-                                                    }
-                                                }
+                            }
+                        }
                         SwarmEvent::Behaviour(NodeEvent::Autonat(_)) |
                         SwarmEvent::NewListenAddr{..} |
-                        SwarmEvent::ConnectionEstablished{..} |
                         SwarmEvent::ConnectionClosed{..} |
                         SwarmEvent::Dialing{..} |
                         SwarmEvent::Behaviour(NodeEvent::Identify(_)) => {
                             the_branch = "SwarmConnectivity";
                             start_time = std::time::Instant::now();
-                            if let Err(err) = Self::handle_swarm_connectivity_events(swarm, swarm_event, event_sender, &mut dialed_peers, &mut dead_peers, self.is_local, self.is_client) {
+                            if let Err(err) = Self::handle_swarm_connectivity_events(swarm, swarm_event, event_sender, &mut dialed_peers, is_local, is_client) {
                                               warn!("Error while handling swarm event: {err}");
                             }
                             // continue;
@@ -512,7 +529,7 @@ impl SwarmDriver {
                         SwarmEvent::Behaviour(NodeEvent::Mdns(_)) =>{
                                          the_branch = "Mdns";
                             start_time = std::time::Instant::now();
-                            if let Err(err) = Self::handle_swarm_connectivity_events(swarm, swarm_event, event_sender, &mut dialed_peers, &mut dead_peers, self.is_local, self.is_client) {
+                            if let Err(err) = Self::handle_swarm_connectivity_events(swarm, swarm_event, event_sender, &mut dialed_peers, is_local, is_client) {
                                 warn!("Error while handling swarm event: {err}");
               }
                         }
@@ -997,4 +1014,18 @@ pub(crate) fn multiaddr_strip_p2p(multiaddr: &Multiaddr) -> Multiaddr {
         .iter()
         .filter(|p| !matches!(p, Protocol::P2p(_)))
         .collect()
+}
+
+
+
+/// Helper function to print formatted connection role info.
+fn endpoint_str(endpoint: &libp2p::core::ConnectedPoint) -> String {
+    match endpoint {
+        libp2p::core::ConnectedPoint::Dialer { address, .. } => {
+            format!("outgoing ({address})")
+        }
+        libp2p::core::ConnectedPoint::Listener { send_back_addr, .. } => {
+            format!("incoming ({send_back_addr})")
+        }
+    }
 }
