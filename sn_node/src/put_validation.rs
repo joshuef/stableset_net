@@ -11,7 +11,7 @@ use crate::{
     Node,
 };
 use libp2p::kad::Record;
-use sn_dbc::{DbcId, DbcTransaction, Hash, SignedSpend};
+use sn_dbc::{DbcId, DbcTransaction, Hash, SignedSpend, Token};
 use sn_protocol::{
     error::Error as ProtocolError,
     messages::{CmdOk, MerkleTreeNodesType, PaymentProof},
@@ -35,6 +35,7 @@ impl Node {
     pub(crate) async fn validate_and_store_record(
         &self,
         record: Record,
+        validate_payment: bool,
     ) -> Result<CmdOk, ProtocolError> {
         let record_header = RecordHeader::from_record(&record)?;
 
@@ -52,7 +53,8 @@ impl Node {
                     return Err(ProtocolError::RecordKeyMismatch);
                 }
 
-                self.validate_and_store_chunk(chunk_with_payment).await
+                self.validate_and_store_chunk(chunk_with_payment, validate_payment)
+                    .await
             }
             RecordKind::DbcSpend => {
                 let signed_spends = try_deserialize_record::<Vec<SignedSpend>>(&record)?;
@@ -89,6 +91,7 @@ impl Node {
     pub(crate) async fn validate_and_store_chunk(
         &self,
         chunk_with_payment: ChunkWithPayment,
+        validate_payment_amount: bool,
     ) -> Result<CmdOk, ProtocolError> {
         let chunk_name = *chunk_with_payment.chunk.name();
         debug!("validating and storing chunk {chunk_name:?}");
@@ -115,7 +118,8 @@ impl Node {
             return Ok(CmdOk::DataAlreadyPresent);
         }
 
-        self.chunk_payment_validation(&chunk_with_payment).await?;
+        self.chunk_payment_validation(&chunk_with_payment, validate_payment_amount)
+            .await?;
 
         let record = Record {
             key,
@@ -269,6 +273,7 @@ impl Node {
     async fn chunk_payment_validation(
         &self,
         chunk_with_payment: &ChunkWithPayment,
+        validate_payment_amount: bool,
     ) -> Result<(), ProtocolError> {
         let PaymentProof {
             spent_ids,
@@ -309,9 +314,30 @@ impl Node {
         }
 
         if let Some(tx) = payment_tx {
+            let acceptable_fee = self
+                .network
+                .get_local_storecost()
+                .await
+                .map_err(|_| ProtocolError::ChunkNotStored(addr_name))?;
             // Check if the fee output id and amount are correct, as well as verify
-            // the payment proof corresponds to the fee output.
-            verify_fee_output_and_proof(addr_name, &tx, audit_trail, path)?;
+            // the payment proof corresponds to the fee output and that
+            // the fee is sufficient for this chunk.
+            match verify_fee_output_and_proof(addr_name, acceptable_fee, &tx, audit_trail, path) {
+                Ok(tx) => tx,
+                Err(ProtocolError::PaymentProofInsufficientAmount { paid, expected }) => {
+                    if !validate_payment_amount {
+                        return Ok(());
+                    } else {
+                        return Err(ProtocolError::PaymentProofInsufficientAmount {
+                            paid,
+                            expected,
+                        });
+                    }
+                }
+                Err(error) => {
+                    return Err(error);
+                }
+            }
         } else {
             return Err(ProtocolError::PaymentProofWithoutInputs(addr_name));
         }
@@ -553,6 +579,7 @@ fn verify_fee_output_id(spent_tx: &DbcTransaction, required: bool) -> Result<(),
 // the proof's audit trail info.
 fn verify_fee_output_and_proof(
     addr_name: XorName,
+    acceptable_fee: Token,
     tx: &DbcTransaction,
     audit_trail: &[MerkleTreeNodesType],
     path: &[usize],
@@ -568,14 +595,12 @@ fn verify_fee_output_and_proof(
         })?;
 
     // Check the expected amount of tokens was paid by the Tx, i.e. the amount of
-    // the fee output the expected 1 nano per Chunk/address.
-    let paid = tx.fee.token.as_nano() as usize;
-    if paid <= leaf_index {
-        // the payment amount is not enough, we expect 1 nano per adddress
-        return Err(ProtocolError::PaymentProofInsufficientAmount {
-            paid,
-            expected: leaf_index + 1,
-        });
+    // the fee output the expected `acceptable_fee` nano per Chunk/address.
+    let paid = tx.fee.token;
+    let expected = Token::from_nano(acceptable_fee.as_nano() * (leaf_index as u64 + 1));
+    if paid < expected {
+        // the payment amount is not enough, we expect `acceptable_fee` nanos per adddress
+        return Err(ProtocolError::PaymentProofInsufficientAmount { paid, expected });
     }
 
     Ok(())
@@ -590,12 +615,14 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_verify_payment_proof(num_of_addrs in 1..1000) {
+        fn test_verify_payment_proof(num_of_addrs in 1..1000, store_cost in 1..10000 ) {
             let mut rng = rand::thread_rng();
+            let network_store_cost = Token::from_nano(store_cost as u64);
             let random_names = (0..num_of_addrs).map(|_| XorName::random(&mut rng)).collect::<Vec<_>>();
             let (root_hash, proofs) = build_payment_proofs(random_names.iter())?;
-            let total_cost = num_of_addrs as u64;
+            let total_cost = num_of_addrs as u64 * network_store_cost.as_nano();
 
+            let total_leaves = random_names.len();
             for (leaf_index, name) in random_names.into_iter().enumerate() {
                 // TODO: populate with random inputs to make the test more complete.
                 let mut tx = DbcTransaction {
@@ -614,32 +641,39 @@ mod tests {
 
                 // verification should pass since we provide the correct audit trail info
                 assert!(matches!(
-                    verify_fee_output_and_proof(name, &tx, audit_trail, path),
+                    verify_fee_output_and_proof(name, network_store_cost, &tx, audit_trail, path),
                     Ok(())
                 ));
 
                 // verification should fail if we pass invalid payment proof audit trail or path
                 assert!(matches!(
-                    verify_fee_output_and_proof(name, &tx, &[], path),
+                    verify_fee_output_and_proof(name,network_store_cost,  &tx, &[], path),
                     Err(ProtocolError::InvalidPaymentProof {addr_name, ..}) if addr_name == name
                 ));
                 assert!(matches!(
-                    verify_fee_output_and_proof(name, &tx, audit_trail, &[]),
+                    verify_fee_output_and_proof(name, network_store_cost, &tx, audit_trail, &[]),
                     Err(ProtocolError::InvalidPaymentProof {addr_name, ..}) if addr_name == name
                 ));
 
                 // verification should fail if the amount paid is not enough for the content
-                tx.fee.token = Token::from_nano(leaf_index as u64); // it should fail with an amount less or equal to this value
-                assert!(matches!(
-                    verify_fee_output_and_proof(name, &tx, audit_trail, path),
-                    Err(ProtocolError::PaymentProofInsufficientAmount { paid, expected })
-                        if paid == leaf_index && expected == leaf_index + 1
-                ));
+                tx.fee.token = Token::from_nano(total_cost - 1); // it should fail with an amount less or equal to this value as store
+                let res = verify_fee_output_and_proof(name, network_store_cost, &tx, audit_trail, path);
+
+                // if we're the last leaf, run this
+                if leaf_index + 1 == total_leaves {
+                    if let Err(ProtocolError::PaymentProofInsufficientAmount { paid, expected }) = res {
+                        assert_eq!(paid.as_nano(), total_cost - 1, "Paid amount one less than total should be");
+                        assert_eq!(expected.as_nano(), total_cost, "Expected amount should be total cost");
+                    }
+                    else {
+                        panic!("Expected insufficient amount error")
+                    }
+                }
 
                 // verification should pass if the amount is more than enough for the content
-                tx.fee.token = Token::from_nano(total_cost + 1);
+                tx.fee.token = Token::from_nano(total_cost + network_store_cost.as_nano());
                 assert!(matches!(
-                    verify_fee_output_and_proof(name, &tx, audit_trail, path),
+                    verify_fee_output_and_proof(name, network_store_cost, &tx, audit_trail, path),
                     Ok(())
                 ));
 
@@ -647,7 +681,7 @@ mod tests {
                 let invalid_fee_id = [123; 32].into();
                 tx.fee.id = invalid_fee_id;
                 assert!(matches!(
-                    verify_fee_output_and_proof(name, &tx, audit_trail, &[]),
+                    verify_fee_output_and_proof(name, network_store_cost, &tx, audit_trail, &[]),
                     Err(err) if err == ProtocolError::PaymentProofInvalidFeeOutput(invalid_fee_id)));
 
             }
