@@ -276,15 +276,16 @@ impl Client {
         verify_store: bool,
     ) -> Result<()> {
         info!("Store chunk: {:?}", chunk.address());
-        let key = NetworkAddress::from_chunk_address(*chunk.address()).to_record_key();
+        let key = chunk.network_address().to_record_key();
         let chunk_with_payment = ChunkWithPayment { chunk, payment };
+
         let record = Record {
             key,
             value: try_serialize_record(&chunk_with_payment, RecordKind::Chunk)?,
             publisher: None,
             expires: None,
         };
-
+        
         Ok(self.network.put_record(record, verify_store).await?)
     }
 

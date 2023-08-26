@@ -6,15 +6,18 @@
 // KIND, either express or implied. Please review the Licences for the specific language governing
 // permissions and limitations relating to use of the SAFE Network Software.
 
+use crate::WalletClient;
+
 use super::{
     chunks::{to_chunk, DataMapLevel, Error, SmallFile},
     error::Result,
     Client,
 };
 
+use sn_dbc::Dbc;
 use sn_protocol::{
     storage::{Chunk, ChunkAddress},
-    NetworkAddress,
+    NetworkAddress, PrettyPrintRecordKey,
 };
 use sn_transfers::client_transfers::ContentPaymentsMap;
 
@@ -95,29 +98,34 @@ impl Files {
 
     /// Directly writes [`Bytes`] to the network in the
     /// form of immutable chunks, without any batching.
-    #[instrument(skip(self, bytes), level = "debug")]
+    #[instrument(skip(self, bytes, wallet_client), level = "debug")]
     pub async fn upload_with_payments(
         &self,
         bytes: Bytes,
-        content_payments_map: ContentPaymentsMap,
+        wallet_client: &WalletClient,
+        // content_payments_map: ContentPaymentsMap,
         verify_store: bool,
     ) -> Result<NetworkAddress> {
-        self.upload_bytes(bytes, content_payments_map, verify_store)
-            .await
+        self.upload_bytes(bytes, wallet_client, verify_store).await
     }
 
-    /// Directly writes [`Bytes`] to the network in the
-    /// form of immutable chunks, without any batching.
-    /// It also attempts to verify that all the data was uploaded to the network before returning.
-    /// It does this via running `read_bytes` with each chunk with `query_timeout` set.
-    #[instrument(skip_all, level = "trace")]
-    pub async fn upload_and_verify(
-        &self,
-        bytes: Bytes,
-        content_payments_map: ContentPaymentsMap,
-    ) -> Result<NetworkAddress> {
-        self.upload_bytes(bytes, content_payments_map, true).await
-    }
+    // /// Get the payment DBC for a given address if it exists
+    // pub async fn payment_dbc_for_address(&self, address: PublicAddress) -> Result<Dbc> {
+    //     let dbc = self
+    //         .client
+    //         .get_payment_proof(address)
+    //         .await
+    //         .map_err(|err| {
+    //             warn!(
+    //                 "Failed to get payment proof for address: {address:?} with error: {err:?}",
+    //                 address = address,
+    //                 err = err
+    //             );
+    //             err
+    //         })?;
+
+    //     Ok(dbc)
+    // }
 
     /// Calculates a LargeFile's/SmallFile's address from self encrypted chunks,
     /// without storing them onto the network.
@@ -142,47 +150,44 @@ impl Files {
     /// Directly writes Chunks to the network in the
     /// form of immutable self encrypted chunks.
     #[instrument(skip_all, level = "trace")]
-    pub async fn upload_chunks_in_batches(
+    pub async fn get_payment_and_upload_chunk(
         &self,
-        chunks: impl Iterator<Item = Chunk>,
-        content_payments_map: &mut ContentPaymentsMap,
+        chunk: Chunk,
+        wallet_client: &WalletClient,
+        // content_payments_map: &mut ContentPaymentsMap,
         verify_store: bool,
     ) -> Result<()> {
-        trace!("Client upload in batches started");
-        let mut tasks = vec![];
-        let mut next_batch_size = 0;
-        for chunk in chunks {
-            next_batch_size += 1;
-            let client = self.client.clone();
-            let chunk_addr = chunk.network_address();
-            let payment = content_payments_map
-                .remove(&chunk_addr)
-                .ok_or(super::Error::MissingPaymentProof(format!("{chunk_addr}")))?;
+        let client = self.client.clone();
+        let chunk_addr = chunk.network_address();
+        trace!("Client upload started for chunk: {chunk_addr:?}");
 
-            trace!("Payment for {chunk:?}: {:?}", payment);
-            tasks.push(task::spawn(async move {
-                client.store_chunk(chunk, payment, verify_store).await?;
+        let payment: Vec<Dbc> = wallet_client
+            .get_payment_dbcs(&chunk_addr)
+            .into_iter()
+            .cloned()
+            .collect();
 
-                Ok::<(), super::error::Error>(())
-            }));
-
-            if next_batch_size == CHUNKS_BATCH_MAX_SIZE {
-                let tasks_to_poll = tasks;
-                join_all_tasks(tasks_to_poll).await?;
-                // In case of not verifying, sleep for a little bit to let the network settle down.
-                if !verify_store {
-                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                }
-                tasks = vec![];
-                next_batch_size = 0;
-            }
+        if payment.is_empty() {
+            warn!(
+                    "Failed to get payment proof for chunk: {chunk_addr:?} it was not found in the local wallet",
+                    chunk_addr = chunk_addr,
+                );
+            return Err(Error::NoPaymentForRecord(PrettyPrintRecordKey::from(
+                chunk_addr.to_record_key(),
+            )))?;
         }
 
-        if next_batch_size > 0 {
-            join_all_tasks(tasks).await?;
-        }
+        // let payment = content_payments_map
+        //     .remove(&chunk_addr)
+        //     .ok_or(super::Error::MissingPaymentProof(format!("{chunk_addr}")))?;
 
-        trace!("Client upload in batches completed");
+        trace!(
+            "Payment for {chunk_addr:?}: has length: {:?}",
+            payment.len()
+        );
+        client.store_chunk(chunk, payment, verify_store).await?;
+
+        trace!("Client upload completed for chunk: {chunk_addr:?}");
         Ok(())
     }
 
@@ -190,20 +195,26 @@ impl Files {
     // ---------- Private helpers -----------------
     // --------------------------------------------
 
-    #[instrument(skip(self, bytes), level = "trace")]
+    /// Used for testing
+    #[instrument(skip(self, bytes, wallet_client), level = "trace")]
     async fn upload_bytes(
         &self,
         bytes: Bytes,
-        mut content_payments_map: ContentPaymentsMap,
+        wallet_client: &WalletClient,
+        // mut content_payments_map: ContentPaymentsMap,
         verify: bool,
     ) -> Result<NetworkAddress> {
         if bytes.len() < MIN_ENCRYPTABLE_BYTES {
             let file = SmallFile::new(bytes)?;
-            self.upload_small(file, content_payments_map, verify).await
+            self.upload_small(file, wallet_client, verify).await
         } else {
             let (head_address, chunks) = encrypt_large(bytes)?;
-            self.upload_chunks_in_batches(chunks.into_iter(), &mut content_payments_map, verify)
-                .await?;
+
+            for chunk in chunks {
+                self.get_payment_and_upload_chunk(chunk, wallet_client, verify)
+                    .await?;
+            }
+
             Ok(NetworkAddress::ChunkAddress(ChunkAddress::new(
                 head_address,
             )))
@@ -216,15 +227,20 @@ impl Files {
     async fn upload_small(
         &self,
         small: SmallFile,
-        content_payments_map: ContentPaymentsMap,
+        wallet_client: &WalletClient,
         verify_store: bool,
     ) -> Result<NetworkAddress> {
         let chunk = package_small(small)?;
         let address = chunk.network_address();
-        let payment = content_payments_map
-            .get(&address)
+        let payment: Vec<Dbc> = wallet_client
+            .get_payment_dbcs(&address)
+            .into_iter()
             .cloned()
-            .ok_or(super::Error::MissingPaymentProof(format!("{address}")))?;
+            .collect();
+
+        if payment.is_empty() {
+            return Err(super::Error::MissingPaymentProof(format!("{address}")));
+        }
 
         self.client
             .store_chunk(chunk, payment, verify_store)

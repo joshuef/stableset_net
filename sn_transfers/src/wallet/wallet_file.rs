@@ -6,6 +6,8 @@
 // KIND, either express or implied. Please review the Licences for the specific language governing
 // permissions and limitations relating to use of the SAFE Network Software.
 
+use crate::client_transfers::SpendRequest;
+
 use super::{
     error::{Error, Result},
     public_address_name, KeyLessWallet,
@@ -20,13 +22,13 @@ use tokio::fs;
 const WALLET_FILE_NAME: &str = "wallet";
 const CREATED_DBCS_DIR_NAME: &str = "created_dbcs";
 const RECEIVED_DBCS_DIR_NAME: &str = "received_dbcs";
+const UNCONFRIMED_TX_NAME: &str = "unconfirmed_txs";
 
 pub(super) async fn create_received_dbcs_dir(wallet_dir: &Path) -> Result<()> {
     let received_dbcs_dir = wallet_dir.join(RECEIVED_DBCS_DIR_NAME);
     fs::create_dir_all(&received_dbcs_dir).await?;
     Ok(())
 }
-
 /// Writes the `KeyLessWallet` to the specified path.
 pub(super) async fn store_wallet(wallet_dir: &Path, wallet: &KeyLessWallet) -> Result<()> {
     let wallet_path = wallet_dir.join(WALLET_FILE_NAME);
@@ -46,6 +48,30 @@ pub(super) async fn get_wallet(wallet_dir: &Path) -> Result<Option<KeyLessWallet
     let wallet = bincode::deserialize(&bytes)?;
 
     Ok(Some(wallet))
+}
+
+/// Writes the `unconfirmed_txs` to the specified path.
+pub(super) async fn store_unconfirmed_txs(
+    wallet_dir: &Path,
+    unconfirmed_txs: &Vec<SpendRequest>,
+) -> Result<()> {
+    let unconfirmed_txs_path = wallet_dir.join(UNCONFRIMED_TX_NAME);
+    let bytes = bincode::serialize(&unconfirmed_txs)?;
+    fs::write(&unconfirmed_txs_path, bytes).await?;
+    Ok(())
+}
+
+/// Returns `Some(Vec<SpendRequest>)` or None if file doesn't exist.
+pub(super) async fn get_unconfirmed_txs(wallet_dir: &Path) -> Result<Option<Vec<SpendRequest>>> {
+    let path = wallet_dir.join(UNCONFRIMED_TX_NAME);
+    if !path.is_file() {
+        return Ok(None);
+    }
+
+    let bytes = fs::read(&path).await?;
+    let unconfirmed_txs = bincode::deserialize(&bytes)?;
+
+    Ok(Some(unconfirmed_txs))
 }
 
 /// Hex encode and write each `Dbc` to a separate file in respective

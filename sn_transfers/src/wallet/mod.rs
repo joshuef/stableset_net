@@ -57,7 +57,7 @@ mod keys;
 mod local_store;
 mod wallet_file;
 
-use crate::client_transfers::ContentPaymentsMap;
+use crate::client_transfers::ContentPaymentsIdMap;
 
 pub use self::{
     error::{Error, Result},
@@ -66,28 +66,37 @@ pub use self::{
 };
 
 use sn_dbc::{Dbc, DbcId, PublicAddress, Token};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub(super) struct KeyLessWallet {
     /// The current balance of the wallet.
     balance: Token,
-    /// These are dbcs we've owned, that have been
+    /// All dbcs owned by the wallet, spent or not.
+    dbcs: BTreeMap<DbcId, Dbc>,
+    /// These are the DbcIds of dbcs we've owned, that have been
     /// spent when sending tokens to other addresses.
-    spent_dbcs: BTreeMap<DbcId, Dbc>,
-    /// These are the dbcs we own that are not yet spent.
-    available_dbcs: BTreeMap<DbcId, Dbc>,
-    /// These are the dbcs we've created by
+    spent_dbcs: BTreeSet<DbcId>,
+    /// These are the DbcIds of dbcs we own that are not yet spent.
+    available_dbcs: BTreeSet<DbcId>,
+    /// These are the DbcIds of dbcs we've created by
     /// sending tokens to other addresses.
     /// They are not owned by us, but we
     /// keep them here so we can track our
     /// transfer history.
-    dbcs_created_for_others: Vec<Dbc>,
+    dbcs_created_for_others: BTreeSet<DbcId>,
     /// Cached proofs of storage transactions made to be used for uploading the paid content.
-    payment_transactions: ContentPaymentsMap,
+    payment_transactions: ContentPaymentsIdMap,
 }
 
 /// Return the name of a PublicAddress.
 pub fn public_address_name(public_address: &PublicAddress) -> xor_name::XorName {
     xor_name::XorName::from_content(&public_address.to_bytes())
+}
+
+impl KeyLessWallet {
+    /// Get the Dbc by DbcId
+    pub fn dbc(&self, id: &DbcId) -> Option<&Dbc> {
+        self.dbcs.get(id)
+    }
 }
