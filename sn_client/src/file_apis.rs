@@ -6,6 +6,8 @@
 // KIND, either express or implied. Please review the Licences for the specific language governing
 // permissions and limitations relating to use of the SAFE Network Software.
 
+use std::path::Path;
+
 use crate::WalletClient;
 
 use super::{
@@ -14,12 +16,11 @@ use super::{
     Client,
 };
 
-use sn_dbc::Dbc;
 use sn_protocol::{
     storage::{Chunk, ChunkAddress},
     NetworkAddress, PrettyPrintRecordKey,
 };
-use sn_transfers::client_transfers::ContentPaymentsMap;
+use sn_transfers::wallet::LocalWallet;
 
 use bincode::deserialize;
 use bytes::Bytes;
@@ -42,6 +43,12 @@ impl Files {
     /// Create file apis instance.
     pub fn new(client: Client) -> Self {
         Self { client }
+    }
+
+    /// Create a new WalletClient for a given root directory.
+    pub async fn wallet(&self, root_dir: &Path) -> Result<WalletClient> {
+        let wallet = LocalWallet::load_from(root_dir).await?;
+        Ok(WalletClient::new(self.client.clone(), wallet))
     }
 
     #[instrument(skip(self), level = "debug")]
@@ -161,11 +168,7 @@ impl Files {
         let chunk_addr = chunk.network_address();
         trace!("Client upload started for chunk: {chunk_addr:?}");
 
-        let payment: Vec<Dbc> = wallet_client
-            .get_payment_dbcs(&chunk_addr)
-            .into_iter()
-            .cloned()
-            .collect();
+        let payment = wallet_client.get_payment_dbcs(&chunk_addr).await;
 
         if payment.is_empty() {
             warn!(
@@ -232,11 +235,7 @@ impl Files {
     ) -> Result<NetworkAddress> {
         let chunk = package_small(small)?;
         let address = chunk.network_address();
-        let payment: Vec<Dbc> = wallet_client
-            .get_payment_dbcs(&address)
-            .into_iter()
-            .cloned()
-            .collect();
+        let payment = wallet_client.get_payment_dbcs(&address).await;
 
         if payment.is_empty() {
             return Err(super::Error::MissingPaymentProof(format!("{address}")));
@@ -381,19 +380,3 @@ fn package_small(file: SmallFile) -> Result<Chunk> {
     Ok(chunk)
 }
 
-// Helper to join a provided set of spawned tasks
-async fn join_all_tasks(tasks: Vec<JoinHandle<Result<()>>>) -> Result<()> {
-    let responses = join_all(tasks)
-        .await
-        .into_iter()
-        .flatten() // swallows errors
-        .collect_vec();
-
-    for res in responses {
-        // fail with any issue here
-        if res.as_ref().is_err() {
-            return res;
-        }
-    }
-    Ok(())
-}

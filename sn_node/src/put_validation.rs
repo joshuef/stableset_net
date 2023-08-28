@@ -42,8 +42,11 @@ impl Node {
                 // check if the deserialized value's ChunkAddress matches the record's key
                 let key = chunk_with_payment.chunk.network_address().to_record_key();
                 if record.key != key {
-
-                    warn!("record key: {:?}, key: {:?}", PrettyPrintRecordKey::from(record.key), PrettyPrintRecordKey::from(key));
+                    warn!(
+                        "record key: {:?}, key: {:?}",
+                        PrettyPrintRecordKey::from(record.key),
+                        PrettyPrintRecordKey::from(key)
+                    );
                     warn!(
                         "Record's key does not match with the value's ChunkAddress, ignoring PUT."
                     );

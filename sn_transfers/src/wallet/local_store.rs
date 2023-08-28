@@ -8,7 +8,7 @@
 use super::{
     keys::{get_main_key, store_new_keypair},
     wallet_file::{
-        create_received_dbcs_dir, get_unconfirmed_txs, get_wallet, load_received_dbcs,
+        create_received_dbcs_dir, get_unconfirmed_txs, get_wallet, load_dbc, load_received_dbcs,
         store_created_dbcs, store_unconfirmed_txs, store_wallet,
     },
     KeyLessWallet, Result,
@@ -55,8 +55,12 @@ impl LocalWallet {
     /// Stores the given dbc to the `created dbcs dir` in the wallet dir.
     /// Each recipient has their own dir, containing all dbcs for them.
     /// These can then be sent to the recipients out of band, over any channel preferred.
-    pub async fn store_created_dbc(&mut self, dbc: Dbc) -> Result<()> {
+    pub async fn store_dbc(&mut self, dbc: Dbc) -> Result<()> {
         store_created_dbcs(vec![dbc], &self.wallet_dir).await
+    }
+
+    pub async fn get_dbc(&mut self, dbc_id: &DbcId) -> Option<Dbc> {
+        load_dbc(dbc_id, &self.wallet_dir).await
     }
 
     /// Store unconfirmed_txs to disk.
@@ -72,7 +76,7 @@ impl LocalWallet {
     /// Try to load any new dbcs from the `received dbcs dir` in the wallet dir.
     pub async fn try_load_deposits(&mut self) -> Result<()> {
         let deposited = load_received_dbcs(&self.wallet_dir).await?;
-        self.wallet.deposit(deposited, &self.key)?;
+        self.deposit(deposited).await?;
         Ok(())
     }
 
@@ -110,15 +114,16 @@ impl LocalWallet {
         self.key.sign(msg)
     }
 
-    pub fn deposit(&mut self, dbcs: Vec<Dbc>) -> Result<()> {
-        self.wallet.deposit(dbcs, &self.key)
-    }
+    // pub fn deposit(&mut self, dbcs: Vec<Dbc>) -> Result<()> {
+    //     self.wallet.deposit(dbcs, &self.key)
+    // }
 
-    pub fn available_dbcs(&self) -> Vec<(Dbc, DerivedKey)> {
+    pub async fn available_dbcs(&self) -> Vec<(Dbc, DerivedKey)> {
         let mut available_dbcs = vec![];
 
-        for id in self.wallet.available_dbcs.iter() {
-            let held_dbc = self.wallet.dbc(&id);
+        for (id, _token) in self.wallet.available_dbcs.iter() {
+            println!("avaiable id? {:?}", id);
+            let held_dbc = load_dbc(id, &self.wallet_dir).await;
             if let Some(dbc) = held_dbc {
                 if let Ok(derived_key) = dbc.derived_key(&self.key) {
                     available_dbcs.push((dbc.clone(), derived_key));
@@ -147,14 +152,14 @@ impl LocalWallet {
     }
 
     /// Return the payment dbc ids for the given content address name if cached.
-    pub fn get_payment_dbcs(&self, name: &NetworkAddress) -> Vec<&Dbc> {
+    pub async fn get_payment_dbcs(&self, name: &NetworkAddress) -> Vec<Dbc> {
         let ids = self.get_payment_dbc_ids(name);
         // now grab all those dbcs
         let mut dbcs = vec![];
 
         if let Some(ids) = ids {
             for id in ids {
-                if let Some(dbc) = self.wallet.dbc(id) {
+                if let Some(dbc) = load_dbc(id, &self.wallet_dir).await {
                     dbcs.push(dbc);
                 }
             }
@@ -176,7 +181,7 @@ impl LocalWallet {
             .map(|(amount, address)| (amount, address, random_derivation_index(&mut rng)))
             .collect();
 
-        let available_dbcs = self.available_dbcs();
+        let available_dbcs = self.available_dbcs().await;
         trace!("Available DBCs for local send: {:#?}", available_dbcs);
 
         let reason_hash = reason_hash.unwrap_or_default();
@@ -184,7 +189,7 @@ impl LocalWallet {
         let transfer =
             create_transfer(available_dbcs, to_unique_keys, self.address(), reason_hash)?;
 
-        self.update_local_wallet(&transfer)?;
+        self.update_local_wallet(&transfer).await?;
 
         Ok(transfer)
     }
@@ -211,16 +216,12 @@ impl LocalWallet {
 
         let reason_hash = reason_hash.unwrap_or_default();
 
-        let available_dbcs = self.available_dbcs();
+        let available_dbcs = self.available_dbcs().await;
         trace!("Available DBCs: {:#?}", available_dbcs);
-        let transfer_outputs = create_transfer(
-            available_dbcs.clone(),
-            all_payees_only,
-            self.address(),
-            reason_hash,
-        )?;
+        let transfer_outputs =
+            create_transfer(available_dbcs, all_payees_only, self.address(), reason_hash)?;
 
-        self.update_local_wallet(&transfer_outputs)?;
+        self.update_local_wallet(&transfer_outputs).await?;
         println!("Transfers applied locally");
 
         let mut all_transfers_per_address = BTreeMap::default();
@@ -250,7 +251,7 @@ impl LocalWallet {
         Ok(())
     }
 
-    fn update_local_wallet(&mut self, transfer: &TransferOutputs) -> Result<()> {
+    async fn update_local_wallet(&mut self, transfer: &TransferOutputs) -> Result<()> {
         let TransferOutputs {
             change_dbc,
             created_dbcs,
@@ -266,14 +267,51 @@ impl LocalWallet {
             self.wallet.spent_dbcs.insert(spent);
         }
 
-        self.deposit(change_dbc.into_iter().collect())?;
+        self.deposit(change_dbc.into_iter().collect()).await?;
 
         for dbc in created_dbcs {
             self.wallet.dbcs_created_for_others.insert(dbc.id());
-            self.wallet.dbcs.insert(dbc.id(), dbc);
+            self.store_dbc(dbc).await?;
         }
 
         self.unconfirmed_txs.extend(all_spend_requests);
+
+        Ok(())
+    }
+
+    pub async fn deposit(&mut self, dbcs: Vec<Dbc>) -> Result<()> {
+        if dbcs.is_empty() {
+            return Ok(());
+        }
+
+        for dbc in dbcs {
+            let id = dbc.id();
+
+            if let Some(_dbc) = load_dbc(&id, &self.wallet_dir).await {
+                println!("dbc exists");
+                return Ok(());
+            }
+
+            if self.wallet.spent_dbcs.contains(&id) {
+                println!("dbc is spent");
+                return Ok(());
+            }
+
+            if dbc.derived_key(&self.key).is_err() {
+                continue;
+            }
+
+            let token = dbc.token()?;
+            self.store_dbc(dbc).await?;
+            self.wallet.available_dbcs.insert(id, token);
+        }
+
+        let mut new_balance = 0;
+        // get the total of all available dbcs we're holding
+        for (_dbc_id, token) in self.wallet.available_dbcs.iter() {
+            new_balance += token.as_nano();
+        }
+        self.wallet.balance = Token::from_nano(new_balance);
 
         Ok(())
     }
@@ -281,6 +319,7 @@ impl LocalWallet {
 
 /// Loads a serialized wallet from a path.
 async fn load_from_path(wallet_dir: &Path) -> Result<(MainKey, KeyLessWallet, Vec<SpendRequest>)> {
+    debug!("Loooading wallet");
     let key = match get_main_key(wallet_dir).await? {
         Some(key) => key,
         None => {
@@ -289,6 +328,7 @@ async fn load_from_path(wallet_dir: &Path) -> Result<(MainKey, KeyLessWallet, Ve
             key
         }
     };
+    debug!("Loooading wallet main key got");
     let unconfirmed_txs = match get_unconfirmed_txs(wallet_dir).await? {
         Some(unconfirmed_txs) => unconfirmed_txs,
         None => {
@@ -296,6 +336,7 @@ async fn load_from_path(wallet_dir: &Path) -> Result<(MainKey, KeyLessWallet, Ve
             unconfirmed_txs
         }
     };
+    debug!("Loooading uncomfirmed got main key got");
     let wallet = match get_wallet(wallet_dir).await? {
         Some(wallet) => {
             println!(
@@ -313,6 +354,7 @@ async fn load_from_path(wallet_dir: &Path) -> Result<(MainKey, KeyLessWallet, Ve
             wallet
         }
     };
+    debug!("Loooading walllllet got");
 
     Ok((key, wallet, unconfirmed_txs))
 }
@@ -321,7 +363,6 @@ impl KeyLessWallet {
     fn new() -> Self {
         Self {
             balance: Token::zero(),
-            dbcs: Default::default(),
             available_dbcs: Default::default(),
             dbcs_created_for_others: Default::default(),
             spent_dbcs: Default::default(),
@@ -333,43 +374,43 @@ impl KeyLessWallet {
         self.balance
     }
 
-    fn deposit(&mut self, dbcs: Vec<Dbc>, key: &MainKey) -> Result<()> {
-        if dbcs.is_empty() {
-            return Ok(());
-        }
+    // fn deposit(&mut self, dbcs: Vec<Dbc>, key: &MainKey) -> Result<()> {
+    //     if dbcs.is_empty() {
+    //         return Ok(());
+    //     }
 
-        for dbc in dbcs {
-            let id = dbc.id();
-            if self.dbcs.contains_key(&id) {
-                println!("dbc exists");
-                return Ok(());
-            }
+    //     for dbc in dbcs {
+    //         let id = dbc.id();
+    //         // if self.dbcs.contains_key(&id) {
+    //         //     println!("dbc exists");
+    //         //     return Ok(());
+    //         // }
 
-            if self.spent_dbcs.contains(&id) {
-                println!("dbc is spent");
-                return Ok(());
-            }
+    //         if self.spent_dbcs.contains(&id) {
+    //             println!("dbc is spent");
+    //             return Ok(());
+    //         }
 
-            if !dbc.derived_key(key).is_ok() {
-                continue;
-            }
+    //         if dbc.derived_key(key).is_err() {
+    //             continue;
+    //         }
 
-            self.dbcs.insert(id, dbc);
-            self.available_dbcs.insert(id);
-        }
+    //         self.dbcs.insert(id, dbc);
+    //         self.available_dbcs.insert(id);
+    //     }
 
-        let mut new_balance = 0;
-        // get the total of all available dbcs we're holding
-        for dbc_id in self.available_dbcs.iter() {
-            if let Some(dbc) = self.dbc(&dbc_id) {
-                let token = dbc.token()?;
-                new_balance += token.as_nano();
-            }
-        }
-        self.balance = Token::from_nano(new_balance);
+    //     let mut new_balance = 0;
+    //     // get the total of all available dbcs we're holding
+    //     for dbc_id in self.available_dbcs.iter() {
+    //         if let Some(dbc) = self.dbc(dbc_id) {
+    //             let token = dbc.token()?;
+    //             new_balance += token.as_nano();
+    //         }
+    //     }
+    //     self.balance = Token::from_nano(new_balance);
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 }
 
 #[cfg(test)]
@@ -703,7 +744,7 @@ mod tests {
         let created_dbcs = transfer.created_dbcs;
         let dbc = created_dbcs[0].clone();
         let dbc_id = dbc.id();
-        sender.store_created_dbc(dbc).await?;
+        sender.store_dbc(dbc).await?;
 
         let public_address_name = public_address_name(&recipient_public_address);
         let public_address_dir = format!("public_address_{}", hex::encode(public_address_name));

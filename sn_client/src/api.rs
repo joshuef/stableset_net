@@ -152,7 +152,6 @@ impl Client {
                 let _ = client_events_rx.recv().await;
             }
         });
-
         Ok(client)
     }
 
@@ -285,7 +284,7 @@ impl Client {
             publisher: None,
             expires: None,
         };
-        
+
         Ok(self.network.put_record(record, verify_store).await?)
     }
 

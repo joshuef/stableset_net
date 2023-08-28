@@ -8,7 +8,7 @@
 
 use super::wallet::{chunk_and_pay_for_storage, ChunkedFile};
 
-use bytes::{Bytes, BytesMut};
+use bytes::Bytes;
 use clap::Parser;
 use color_eyre::Result;
 use libp2p::futures::future::join_all;
@@ -88,7 +88,6 @@ async fn upload_files(
     root_dir: &Path,
     verify_store: bool,
 ) -> Result<()> {
-
     debug!(
         "Uploading files from {:?}, will verify?: {verify_store}",
         files_path
@@ -97,8 +96,7 @@ async fn upload_files(
     let file_names_path = root_dir.join("uploaded_files");
 
     // Payment shall always be verified.
-    let (chunks_to_upload, wallet_client) =
-        chunk_and_pay_for_storage(&client, root_dir, &files_path, true).await?;
+    let chunks_to_upload = chunk_and_pay_for_storage(&client, root_dir, &files_path, true).await?;
 
     let mut uploads = vec![];
     for (
@@ -117,16 +115,10 @@ async fn upload_files(
 
         // Clone necessary variables for each file upload
         let file_api: Files = Files::new(client.clone());
-
+        let wallet_dir = root_dir.to_path_buf();
         // Spawn a new task for each file upload
-        let upload = match upload_chunks(
-            &file_api,
-            &file_name,
-            chunks,
-            &wallet_client,
-            verify_store,
-        )
-        .await
+        let upload = match upload_chunks(&file_api, &file_name, &wallet_dir, chunks, verify_store)
+            .await
         {
             Err(error) => {
                 println!("Failed to store all chunks of file '{file_name}' to all nodes in the close group: {error}");
@@ -157,22 +149,22 @@ async fn upload_files(
 /// Upload chunks of an individual file to the network.
 async fn upload_chunks(
     file_api: &Files,
-    _file_name: &str,
+    file_name: &str,
+    wallet_dir: &Path,
     chunks_paths: Vec<(XorName, PathBuf)>,
-    wallet_client: &WalletClient,
     verify_store: bool,
 ) -> Result<()> {
+    println!("Awaiting to start uploading chunks of {file_name:?}");
     for (name, path) in chunks_paths {
         // limit pulling of chunks into mem if we cannot handle more!
         let start_time = std::time::Instant::now();
-        let elapsed = start_time.elapsed();
-        println!("Time taken to get a permit for {name:?}: {:?}", elapsed);
+        let wallet_client = file_api.wallet(wallet_dir).await?;
 
         // This is pre chunked, so we don't need to worry about the size of the file here being overly large.
         let chunk = Chunk::new(Bytes::from(fs::read(path).await?));
 
         file_api
-            .get_payment_and_upload_chunk(chunk, wallet_client, verify_store)
+            .get_payment_and_upload_chunk(chunk, &wallet_client, verify_store)
             .await?;
     }
     Ok(())

@@ -65,20 +65,19 @@ pub use self::{
     local_store::LocalWallet,
 };
 
-use sn_dbc::{Dbc, DbcId, PublicAddress, Token};
+use sn_dbc::{DbcId, PublicAddress, Token};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(serde::Serialize, serde::Deserialize)]
+/// This assumes the DBCs are stored on disk
 pub(super) struct KeyLessWallet {
     /// The current balance of the wallet.
     balance: Token,
-    /// All dbcs owned by the wallet, spent or not.
-    dbcs: BTreeMap<DbcId, Dbc>,
     /// These are the DbcIds of dbcs we've owned, that have been
     /// spent when sending tokens to other addresses.
     spent_dbcs: BTreeSet<DbcId>,
     /// These are the DbcIds of dbcs we own that are not yet spent.
-    available_dbcs: BTreeSet<DbcId>,
+    available_dbcs: BTreeMap<DbcId, Token>,
     /// These are the DbcIds of dbcs we've created by
     /// sending tokens to other addresses.
     /// They are not owned by us, but we
@@ -92,11 +91,4 @@ pub(super) struct KeyLessWallet {
 /// Return the name of a PublicAddress.
 pub fn public_address_name(public_address: &PublicAddress) -> xor_name::XorName {
     xor_name::XorName::from_content(&public_address.to_bytes())
-}
-
-impl KeyLessWallet {
-    /// Get the Dbc by DbcId
-    pub fn dbc(&self, id: &DbcId) -> Option<&Dbc> {
-        self.dbcs.get(id)
-    }
 }
