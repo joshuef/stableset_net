@@ -243,7 +243,7 @@ You can check your reward balance by running:
 
     // Generate a random restart interval for the node if we're using chaos mode
     let num_nodes = 100;
-    let restart_percentage = 500; // 500% of the network restarts per day
+    let restart_percentage = 1000; // 1000% of the network restarts per day
     let restart_interval = generate_restart_interval(num_nodes, restart_percentage)?;
     #[cfg(feature = "chaos")]
     Marker::ChaosNodeRestartInterval(restart_interval).log();
@@ -252,12 +252,18 @@ You can check your reward balance by running:
     // We'll monitor any NodeCtrl cmd to restart/stop/update,
     loop {
         let ctrl_cmd = if cfg!(feature = "chaos") {
-            let timeout = tokio::time::timeout(restart_interval, ctrl_rx.recv()).await;
-            if timeout.is_err() {
-                Marker::ChaosNodeRestarting.log();
-                break Ok(());
-            };
-            timeout?
+            // check if we have a SAFE_NO_CHAOS env var set, if so, we'll ignore the chaos mode
+            if std::env::var("SAFE_NO_CHAOS").is_ok() {
+                info!("SAFE_NO_CHAOS env var set, ignoring chaos mode");
+                None
+            } else {
+                let timeout = tokio::time::timeout(restart_interval, ctrl_rx.recv()).await;
+                if timeout.is_err() {
+                    Marker::ChaosNodeRestarting.log();
+                    break Ok(());
+                };
+                timeout?
+            }
         } else {
             ctrl_rx.recv().await
         };
