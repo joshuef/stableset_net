@@ -243,7 +243,7 @@ You can check your reward balance by running:
 
     // Generate a random restart interval for the node if we're using chaos mode
     let num_nodes = 100;
-    let restart_percentage = 1000; // 1000% of the network restarts per day
+    let restart_percentage = 500; // 500% of the network restarts per day
     let restart_interval = generate_restart_interval(num_nodes, restart_percentage)?;
     #[cfg(feature = "chaos")]
     Marker::ChaosNodeRestartInterval(restart_interval).log();
