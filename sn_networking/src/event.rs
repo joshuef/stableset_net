@@ -192,231 +192,232 @@ impl Debug for NetworkEvent {
 impl SwarmDriver {
     /// Handle `SwarmEvents`
     pub(super) fn handle_swarm_events<EventError: std::error::Error>(
-        &mut self,
-        event: SwarmEvent<NodeEvent, EventError>,
-    ) -> Result<()> {
-        // This does not record all the events. `SwarmEvent::Behaviour(_)` are skipped. Hence `.record()` has to be
-        // called individually on each behaviour.
-        #[cfg(feature = "open-metrics")]
-        self.network_metrics.record(&event);
-        match event {
-            SwarmEvent::Behaviour(NodeEvent::MsgReceived(event)) => {
-                if let Err(e) = self.handle_msg(event) {
-                    warn!("MsgReceivedError: {e:?}");
-                }
+    &mut self,
+    event: SwarmEvent<NodeEvent, EventError>,
+) -> Result<()> {
+    // This does not record all the events. `SwarmEvent::Behaviour(_)` are skipped. Hence `.record()` has to be
+    // called individually on each behaviour.
+    #[cfg(feature = "open-metrics")]
+    self.network_metrics.record(&event);
+    match event {
+        SwarmEvent::Behaviour(NodeEvent::MsgReceived(event)) => {
+            if let Err(e) = self.handle_msg(event) {
+                warn!("MsgReceivedError: {e:?}");
             }
-            SwarmEvent::Behaviour(NodeEvent::Kademlia(kad_event)) => {
-                #[cfg(feature = "open-metrics")]
-                self.network_metrics.record(&(kad_event));
-                self.handle_kad_event(kad_event)?;
-            }
-            // Handle the Identify event from the libp2p swarm.
-            SwarmEvent::Behaviour(NodeEvent::Identify(iden)) => {
-                // Record the Identify event for metrics if the feature is enabled.
-                #[cfg(feature = "open-metrics")]
-                self.network_metrics.record(&(*iden));
-                // Match on the Identify event.
-                match *iden {
-                    // If the event is a Received event, handle the received peer information.
-                    libp2p::identify::Event::Received { peer_id, info } => {
-                        trace!(%peer_id, ?info, "identify: received info");
+        }
+        SwarmEvent::Behaviour(NodeEvent::Kademlia(kad_event)) => {
+            #[cfg(feature = "open-metrics")]
+            self.network_metrics.record(&(kad_event));
+            self.handle_kad_event(kad_event)?;
+        }
+        // Handle the Identify event from the libp2p swarm.
+        SwarmEvent::Behaviour(NodeEvent::Identify(iden)) => {
+            self.handle_identify_event(iden)?;
+        }
+        #[cfg(feature = "local-discovery")]
+        SwarmEvent::Behaviour(NodeEvent::Mdns(mdns_event)) => match *mdns_event {
+            self.handle_mdns_event(mdns_event)?;
 
-                        // If we are not local, we care only for peers that we dialed and thus are reachable.
-                        if self.local
-                            || self.dialed_peers.contains(&peer_id)
-                                && info
-                                    .agent_version
-                                    .starts_with(truncate_patch_version(IDENTIFY_AGENT_STR))
-                        {
-                            // If we're not in local mode, only add globally reachable addresses.
-                            // Strip the `/p2p/...` part of the multiaddresses.
-                            // Collect into a HashSet directly to avoid multiple allocations and handle deduplication.
-                            let addrs: HashSet<Multiaddr> = match self.local {
-                                true => info
-                                    .listen_addrs
-                                    .into_iter()
-                                    .map(|addr| multiaddr_strip_p2p(&addr))
-                                    .collect(),
-                                false => info
-                                    .listen_addrs
-                                    .into_iter()
-                                    .filter(multiaddr_is_global)
-                                    .map(|addr| multiaddr_strip_p2p(&addr))
-                                    .collect(),
-                            };
-
-                            // Attempt to add the addresses to the routing table.
-                            for multiaddr in &addrs {
-                                trace!(%peer_id, ?addrs, "identify: attempting to add addresses to routing table");
-
-                                let _routing_update = self
-                                    .swarm
-                                    .behaviour_mut()
-                                    .kademlia
-                                    .add_address(&peer_id, multiaddr.clone());
-                            }
-
-                            // If the peer supports AutoNAT, add it as server
-                            if info.protocols.iter().any(|protocol| {
-                                protocol.to_string().starts_with("/libp2p/autonat/")
-                            }) {
-                                let a = &mut self.swarm.behaviour_mut().autonat;
-                                // It could be that we are on a local network and have AutoNAT disabled.
-                                if let Some(autonat) = a.as_mut() {
-                                    for multiaddr in addrs {
-                                        autonat.add_server(peer_id, Some(multiaddr));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    // Log the other Identify events.
-                    libp2p::identify::Event::Sent { .. } => trace!("identify: {iden:?}"),
-                    libp2p::identify::Event::Pushed { .. } => trace!("identify: {iden:?}"),
-                    libp2p::identify::Event::Error { .. } => trace!("identify: {iden:?}"),
-                }
-            }
-            #[cfg(feature = "local-discovery")]
-            SwarmEvent::Behaviour(NodeEvent::Mdns(mdns_event)) => match *mdns_event {
-                mdns::Event::Discovered(list) => {
-                    if self.local {
-                        for (peer_id, addr) in list {
-                            // The multiaddr does not contain the peer ID, so add it.
-                            let addr = addr.with(Protocol::P2p(peer_id));
-
-                            info!(%addr, "mDNS node discovered and dialing");
-
-                            if let Err(err) = self.dial(addr.clone()) {
-                                warn!(%addr, "mDNS node dial error: {err:?}");
-                            }
-                        }
-                    }
-                }
-                mdns::Event::Expired(peer) => {
-                    trace!("mdns peer {peer:?} expired");
-                }
-            },
-            SwarmEvent::Behaviour(NodeEvent::Autonat(event)) => match event {
-                autonat::Event::InboundProbe(e) => trace!("AutoNAT inbound probe: {e:?}"),
-                autonat::Event::OutboundProbe(e) => trace!("AutoNAT outbound probe: {e:?}"),
-                autonat::Event::StatusChanged { old, new } => {
-                    info!("AutoNAT status changed: {old:?} -> {new:?}");
-                    self.send_event(NetworkEvent::NatStatusChanged(new.clone()));
-
-                    match new {
-                        NatStatus::Public(_addr) => {
-                            // In theory, we could actively push our address to our peers now. But, which peers? All of them?
-                            // Or, should we just wait and let Identify do it on its own? But, what if we are not connected
-                            // to any peers anymore? (E.g., our connections timed out etc)
-                            // let all_peers: Vec<_> = self.swarm.connected_peers().cloned().collect();
-                            // self.swarm.behaviour_mut().identify.push(all_peers);
-                        }
-                        NatStatus::Private => {
-                            // We could just straight out error here. In the future we might try to activate a relay mechanism.
-                        }
-                        NatStatus::Unknown => {}
-                    };
-                }
-            },
-            SwarmEvent::Behaviour(NodeEvent::Gossipsub(event)) => {
-                #[cfg(feature = "open-metrics")]
-                self.network_metrics.record(&event);
-                match event {
-                    libp2p::gossipsub::Event::Message { message, .. } => {
-                        let topic = message.topic.into_string();
-                        let msg = message.data;
-                        self.send_event(NetworkEvent::GossipsubMsg { topic, msg });
-                    }
-                    other => trace!("Gossipsub Event has been ignored: {other:?}"),
-                }
-            }
-            SwarmEvent::NewListenAddr { address, .. } => {
-                let local_peer_id = *self.swarm.local_peer_id();
-                let address = address.with(Protocol::P2p(local_peer_id));
-
-                // Trigger server mode if we're not a client
-                if !self.is_client {
-                    if self.local {
-                        // all addresses are effectively external here...
-                        // this is needed for Kad Mode::Server
-                        self.swarm.add_external_address(address.clone());
-                    } else {
-                        // only add our global addresses
-                        if multiaddr_is_global(&address) {
-                            self.swarm.add_external_address(address.clone());
-                        }
-                    }
-                }
-
-                self.send_event(NetworkEvent::NewListenAddr(address.clone()));
-
-                info!("Local node is listening on {address:?}");
-            }
-            SwarmEvent::IncomingConnection {
-                connection_id,
-                local_addr,
-                send_back_addr,
-            } => {
-                trace!("IncomingConnection ({connection_id:?}) with local_addr: {local_addr:?} send_back_addr: {send_back_addr:?}");
-            }
-            SwarmEvent::ConnectionEstablished {
-                peer_id,
-                endpoint,
-                num_established,
-                connection_id,
-                ..
-            } => {
-                trace!(%peer_id, num_established, "ConnectionEstablished ({connection_id:?}): {}", endpoint_str(&endpoint));
-
-                if endpoint.is_dialer() {
-                    self.dialed_peers
-                        .push(peer_id)
-                        .map_err(|_| Error::CircularVecPopFrontError)?;
-                }
-            }
-            SwarmEvent::ConnectionClosed {
-                peer_id,
-                endpoint,
-                cause,
-                num_established,
-                connection_id,
-            } => {
-                trace!(%peer_id, ?connection_id, ?cause, num_established, "ConnectionClosed: {}", endpoint_str(&endpoint));
-            }
-            SwarmEvent::OutgoingConnectionError {
-                peer_id: Some(failed_peer_id),
-                error,
-                connection_id,
-            } => {
-                error!("OutgoingConnectionError to {failed_peer_id:?} on {connection_id:?} - {error:?}");
-                if let Some(dead_peer) = self
-                    .swarm
-                    .behaviour_mut()
-                    .kademlia
-                    .remove_peer(&failed_peer_id)
-                {
-                    self.send_event(NetworkEvent::PeerRemoved(*dead_peer.node.key.preimage()));
-                    self.log_kbuckets(&failed_peer_id);
-                    let _ = self.check_for_change_in_our_close_group();
-                }
-            }
-            SwarmEvent::IncomingConnectionError {
-                connection_id,
-                local_addr,
-                send_back_addr,
-                error,
-            } => {
-                error!("IncomingConnectionError from local_addr:?{local_addr:?}, send_back_addr {send_back_addr:?} on {connection_id:?} with error {error:?}");
-            }
-            SwarmEvent::Dialing {
-                peer_id,
-                connection_id,
-            } => trace!("Dialing {peer_id:?} on {connection_id:?}"),
-            other => trace!("SwarmEvent has been ignored: {other:?}"),
+        },
+        SwarmEvent::Behaviour(NodeEvent::Autonat(event)) => self.handle_autonat_event(event)?,
+        SwarmEvent::Behaviour(NodeEvent::Gossipsub(event)) => {
+            self.handle_gossipsub_event(event)
+        }
+        SwarmEvent::NewListenAddr { address, .. } => {
+            self.handle_new_listen_addr(address)?;
+        }
+        SwarmEvent::IncomingConnection {
+            connection_id,
+            local_addr,
+            send_back_addr,
+        } => {
+            trace!("IncomingConnection ({connection_id:?}) with local_addr: {local_addr:?} send_back_addr: {send_back_addr:?}");
+        }
+        SwarmEvent::ConnectionEstablished {
+            peer_id,
+            endpoint,
+            num_established,
+            connection_id,
+            ..
+        } => {
+           self.handle_connection_established(peer_id, endpoint, num_established, connection_id)?;
+        }
+        SwarmEvent::ConnectionClosed {
+            peer_id,
+            endpoint,
+            cause,
+            num_established,
+            connection_id,
+        } => {
+            trace!(%peer_id, ?connection_id, ?cause, num_established, "ConnectionClosed: {}", endpoint_str(&endpoint));
+        }
+        SwarmEvent::OutgoingConnectionError {
+            peer_id: Some(failed_peer_id),
+            error,
+            connection_id,
+        } => {
+            self.handle_outgoing_connection_error(failed_peer_id, error, connection_id)?;
+        }
+        SwarmEvent::IncomingConnectionError {
+            connection_id,
+            local_addr,
+            send_back_addr,
+            error,
+        } => {
+            error!("IncomingConnectionError from local_addr:?{local_addr:?}, send_back_addr {send_back_addr:?} on {connection_id:?} with error {error:?}");
+        }
+        SwarmEvent::Dialing {
+            peer_id,
+            connection_id,
+        } => trace!("Dialing {peer_id:?} on {connection_id:?}"),
+        other => trace!("SwarmEvent has been ignored: {other:?}"),
+    }
+    Ok(())
+}
+    fn handle_msg_received(&mut self, event: request_response::Event<Request, Response>) -> Result<()> {
+        if let Err(e) = self.handle_msg(event) {
+            warn!("MsgReceivedError: {e:?}");
         }
         Ok(())
     }
 
+
+    fn handle_identify_event(&mut self, iden: Box<libp2p::identify::Event>) -> Result<()> {
+        // Record the Identify event for metrics if the feature is enabled.
+        #[cfg(feature = "open-metrics")]
+        self.network_metrics.record(&(*iden));
+        // Match on the Identify event.
+        match *iden {
+            // If the event is a Received event, handle the received peer information.
+            libp2p::identify::Event::Received { peer_id, info } => {
+                self.handle_identify_received(peer_id, info)
+            }
+            // Log the other Identify events.
+            libp2p::identify::Event::Sent { .. } => {
+                trace!("identify: {iden:?}");
+                Ok(())
+            }
+            libp2p::identify::Event::Pushed { .. } => {
+                trace!("identify: {iden:?}");
+                Ok(())
+            }
+            libp2p::identify::Event::Error { .. } => {
+                trace!("identify: {iden:?}");
+                Ok(())
+            }
+        }
+    }
+
+    #[cfg(feature = "local-discovery")]
+    fn handle_mdns_event(&mut self, mdns_event: Box<mdns::Event>) -> Result<()> {
+        match *mdns_event {
+            mdns::Event::Discovered(list) => {
+                if self.local {
+                    for (peer_id, addr) in list {
+                        // The multiaddr does not contain the peer ID, so add it.
+                        let addr = addr.with(Protocol::P2p(peer_id));
+
+                        info!(%addr, "mDNS node discovered and dialing");
+
+                        if let Err(err) = self.dial(addr.clone()) {
+                            warn!(%addr, "mDNS node dial error: {err:?}");
+                        }
+                    }
+                }
+                Ok(())
+            }
+            mdns::Event::Expired(peer) => {
+                trace!("mdns peer {peer:?} expired");
+                Ok(())
+            }
+        }
+    }
+
+    fn handle_autonat_event(&mut self, event: autonat::Event) -> Result<()> {
+        match event {
+            autonat::Event::InboundProbe(e) => {
+                trace!("AutoNAT inbound probe: {e:?}");
+                Ok(())
+            }
+            autonat::Event::OutboundProbe(e) => {
+                trace!("AutoNAT outbound probe: {e:?}");
+                Ok(())
+            }
+            autonat::Event::StatusChanged { old, new } => {
+                self.handle_autonat_status_changed(old, new)
+            }
+        }
+    }
+
+    fn handle_gossipsub_event(&mut self, event: libp2p::gossipsub::Event) -> Result<()> {
+        #[cfg(feature = "open-metrics")]
+        self.network_metrics.record(&event);
+        match event {
+            libp2p::gossipsub::Event::Message { message, .. } => {
+                let topic = message.topic.into_string();
+                let msg = message.data;
+                self.send_event(NetworkEvent::GossipsubMsg { topic, msg });
+                Ok(())
+            }
+            other => {
+                trace!("Gossipsub Event has been ignored: {other:?}");
+                Ok(())
+            }
+        }
+    }
+
+    fn handle_new_listen_addr(&mut self, address: Multiaddr) -> Result<()> {
+        let local_peer_id = *self.swarm.local_peer_id();
+        let address = address.with(Protocol::P2p(local_peer_id));
+
+        // Trigger server mode if we're not a client
+        if !self.is_client {
+            if self.local {
+                // all addresses are effectively external here...
+                // this is needed for Kad Mode::Server
+                self.swarm.add_external_address(address.clone());
+            } else {
+                // only add our global addresses
+                if multiaddr_is_global(&address) {
+                    self.swarm.add_external_address(address.clone());
+                }
+            }
+        }
+
+        self.send_event(NetworkEvent::NewListenAddr(address.clone()));
+
+        info!("Local node is listening on {address:?}");
+        Ok(())
+    }
+
+
+    fn handle_connection_established(&mut self, peer_id: PeerId, endpoint: ConnectedPoint, num_established: NonZeroUsize, connection_id: ConnectionId) -> Result<()> {
+        trace!(%peer_id, num_established, "ConnectionEstablished ({connection_id:?}): {}", endpoint_str(&endpoint));
+
+        if endpoint.is_dialer() {
+            self.dialed_peers
+                .push(peer_id)
+                .map_err(|_| Error::CircularVecPopFrontError)?;
+        }
+        Ok(())
+    }
+
+
+    fn handle_outgoing_connection_error(&mut self, failed_peer_id: PeerId, error: PendingConnectionError<io::Error>, connection_id: ConnectionId) -> Result<()> {
+        error!("OutgoingConnectionError to {failed_peer_id:?} on {connection_id:?} - {error:?}");
+        if let Some(dead_peer) = self
+            .swarm
+            .behaviour_mut()
+            .kademlia
+            .remove_peer(&failed_peer_id)
+        {
+            self.send_event(NetworkEvent::PeerRemoved(*dead_peer.node.key.preimage()));
+            self.log_kbuckets(&failed_peer_id);
+            let _ = self.check_for_change_in_our_close_group();
+        }
+        Ok(())
+    }
+    
     /// Forwards `Request` to the upper layers using `Sender<NetworkEvent>`. Sends `Response` to the peers
     pub fn handle_msg(
         &mut self,
