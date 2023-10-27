@@ -149,8 +149,6 @@ pub enum NetworkEvent {
     GossipsubMsgPublished {
         /// Topic the message was published on
         topic: String,
-        /// The raw bytes of the sent message
-        msg: Vec<u8>,
     },
 }
 

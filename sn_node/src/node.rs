@@ -368,8 +368,11 @@ impl Node {
                     error!("Failed to remove local record: {e:?}");
                 }
             }
-            NetworkEvent::GossipsubMsgReceived { topic, msg }
-            | NetworkEvent::GossipsubMsgPublished { topic, msg } => {
+            NetworkEvent::GossipsubMsgPublished { topic: _ } => {
+                // Nothing to do here
+                // trace!("NetworkEvent::GossipsubMsgPublished");
+            }
+            NetworkEvent::GossipsubMsgReceived { topic, msg } => {
                 if topic == TRANSFER_NOTIF_TOPIC {
                     // this is expected to be a notification of a transfer which we treat specially
                     match try_decode_transfer_notif(&msg) {
