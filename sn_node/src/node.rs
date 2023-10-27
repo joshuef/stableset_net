@@ -370,7 +370,6 @@ impl Node {
             }
             NetworkEvent::GossipsubMsgPublished { topic: _ } => {
                 // Nothing to do here
-                // trace!("NetworkEvent::GossipsubMsgPublished");
             }
             NetworkEvent::GossipsubMsgReceived { topic, msg } => {
                 if topic == TRANSFER_NOTIF_TOPIC {
