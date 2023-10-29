@@ -14,6 +14,3 @@ members = [
     "sn_testnet",
     "sn_transfers",
 ]
-
-[patch.crates-io]
-libp2p = { git = "https://github.com/joshuef/rust-libp2p", branch = "MemImprovementsAtop52" }
