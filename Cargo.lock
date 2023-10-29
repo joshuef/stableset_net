@@ -5941,3 +5941,8 @@ dependencies = [
  "quote",
  "syn 2.0.38",
 ]
+
+[[patch.unused]]
+name = "libp2p"
+version = "0.52.4"
+source = "git+https://github.com/joshuef/rust-libp2p?branch=MemImprovementsAtop52#eb5d852c243229bd784ec6912982204c6acc06cd"
