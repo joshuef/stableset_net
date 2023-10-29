@@ -8,6 +8,7 @@
 #![allow(clippy::mutable_key_type)] // for the Bytes in NetworkAddress
 
 use crate::event::NetworkEvent;
+use bytes::Bytes;
 use libp2p::{
     identity::PeerId,
     kad::{
@@ -119,7 +120,7 @@ impl NodeRecordStore {
                 debug!("Retrieved record from disk! filename: {filename}");
                 let record = Record {
                     key: key.clone(),
-                    value,
+                    value: Bytes::from(value),
                     publisher: None,
                     expires: None,
                 };

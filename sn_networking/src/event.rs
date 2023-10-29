@@ -350,7 +350,7 @@ impl SwarmDriver {
                 match event {
                     libp2p::gossipsub::Event::Message { message, .. } => {
                         let topic = message.topic.into_string();
-                        let msg = Bytes::from(message.data);
+                        let msg = message.data;
                         self.send_event(NetworkEvent::GossipsubMsgReceived { topic, msg });
                     }
                     other => trace!("Gossipsub Event has been ignored: {other:?}"),
