@@ -11,7 +11,6 @@ use super::{error::Result, event::NodeEventsChannel, Marker, NodeEvent};
 use crate::metrics::NodeMetrics;
 use crate::RunningNode;
 use bls::{PublicKey, PK_SIZE};
-use bytes::Bytes;
 use libp2p::{autonat::NatStatus, identity::Keypair, Multiaddr};
 #[cfg(feature = "open-metrics")]
 use prometheus_client::registry::Registry;
@@ -472,7 +471,7 @@ impl Node {
 
                 if let Some(record_key) = record_key {
                     if let Ok(Some(record)) = self.network.get_local_record(&record_key).await {
-                        result = Ok((our_address, Bytes::from(record.value)));
+                        result = Ok((our_address, record.value));
                     }
                 }
 

@@ -356,8 +356,7 @@ impl Client {
 
         let record = Record {
             key: key.clone(),
-            value: try_serialize_record(&(payment, chunk.clone()), RecordKind::ChunkWithPayment)?
-                .to_vec(),
+            value: try_serialize_record(&(payment, chunk.clone()), RecordKind::ChunkWithPayment)?,
             publisher: None,
             expires: None,
         };
@@ -379,7 +378,7 @@ impl Client {
             // Hence the fetched copies shall only be a `Chunk`
             Some(Record {
                 key,
-                value: try_serialize_record(&chunk, RecordKind::Chunk)?.to_vec(),
+                value: try_serialize_record(&chunk, RecordKind::Chunk)?,
                 publisher: None,
                 expires: None,
             })
@@ -461,7 +460,7 @@ impl Client {
         let key = network_address.to_record_key();
         let record = Record {
             key,
-            value: try_serialize_record(&[spend], RecordKind::Spend)?.to_vec(),
+            value: try_serialize_record(&[spend], RecordKind::Spend)?,
             publisher: None,
             expires: None,
         };
@@ -711,21 +710,21 @@ mod tests {
         // prepare records
         let record1 = Record {
             key: NetworkAddress::from_register_address(address).to_record_key(),
-            value: try_serialize_record(&signed_register1, RecordKind::Register)?.to_vec(),
+            value: try_serialize_record(&signed_register1, RecordKind::Register)?,
             publisher: None,
             expires: None,
         };
         let xorname1 = XorName::from_content(&record1.value);
         let record2 = Record {
             key: NetworkAddress::from_register_address(address).to_record_key(),
-            value: try_serialize_record(&signed_register2, RecordKind::Register)?.to_vec(),
+            value: try_serialize_record(&signed_register2, RecordKind::Register)?,
             publisher: None,
             expires: None,
         };
         let xorname2 = XorName::from_content(&record2.value);
         let record_bad = Record {
             key: NetworkAddress::from_register_address(address).to_record_key(),
-            value: try_serialize_record(&signed_register_bad, RecordKind::Register)?.to_vec(),
+            value: try_serialize_record(&signed_register_bad, RecordKind::Register)?,
             publisher: None,
             expires: None,
         };
