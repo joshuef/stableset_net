@@ -11,7 +11,9 @@ use crate::event::NetworkEvent;
 use libp2p::{
     identity::PeerId,
     kad::{
-        record::{Key, ProviderRecord, Record},
+        RecordKey as Key, 
+        ProviderRecord, 
+        Record,
         store::{Error, RecordStore, Result},
         KBucketDistance as Distance, KBucketKey,
     },

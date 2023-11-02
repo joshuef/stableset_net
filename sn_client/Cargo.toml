@@ -25,7 +25,7 @@ futures = "~0.3.13"
 hex = "~0.4.3"
 indicatif = { version = "0.17.5", features = ["tokio"] }
 itertools = "~0.11.0"
-libp2p = { version="0.52", features = ["identify"] }
+libp2p = { git="https://github.com/libp2p/rust-libp2p/",  version="0.53",rev ="c74ec005fd30bfc408ccee3e7355bf91fe62afdc",  features = ["identify"] }
 prometheus-client = { version = "0.21.2", optional = true }
 rand = { version = "~0.8.5", features = ["small_rng"] }
 rayon = "1.8.0"

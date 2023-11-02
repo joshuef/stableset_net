@@ -33,7 +33,7 @@ use libp2p::{
     identity::Keypair,
     kad::{self, QueryId, Record, K_VALUE},
     multiaddr::Protocol,
-    request_response::{self, Config as RequestResponseConfig, ProtocolSupport, RequestId},
+    request_response::{self, Config as RequestResponseConfig, ProtocolSupport, OutboundRequestId},
     swarm::{
         behaviour::toggle::Toggle,
         dial_opts::{DialOpts, PeerCondition},
@@ -499,7 +499,7 @@ pub struct SwarmDriver {
 
     /// Trackers for underlying behaviour related events
     pub(crate) pending_get_closest_peers: PendingGetClosest,
-    pub(crate) pending_requests: HashMap<RequestId, Option<oneshot::Sender<Result<Response>>>>,
+    pub(crate) pending_requests: HashMap<OutboundRequestId, Option<oneshot::Sender<Result<Response>>>>,
     pub(crate) pending_get_record: PendingGetRecord,
     /// A list of the most recent peers we have dialed ourselves.
     pub(crate) dialed_peers: CircularVec<PeerId>,
