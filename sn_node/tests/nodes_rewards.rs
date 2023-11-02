@@ -11,7 +11,8 @@ mod common;
 use crate::common::{
     get_client_and_wallet, random_content,
     safenode_proto::{
-        safe_node_client::SafeNodeClient, NodeEventsRequest, TransferNotifsFilterRequest,
+        safe_node_client::SafeNodeClient, GossipsubSubscribeRequest, NodeEventsRequest,
+        TransferNotifsFilterRequest,
     },
 };
 use sn_client::WalletClient;
@@ -277,6 +278,7 @@ fn spawn_royalties_payment_listener(
 ) -> JoinHandle<Result<usize, eyre::Report>> {
     tokio::spawn(async move {
         let mut rpc_client = SafeNodeClient::connect(endpoint).await?;
+
         if set_fiter {
             let _ = rpc_client
                 .transfer_notifs_filter(Request::new(TransferNotifsFilterRequest {
@@ -284,6 +286,14 @@ fn spawn_royalties_payment_listener(
                 }))
                 .await?;
         }
+
+        let royalty_topic: &str = "ROYALTY_TRANSFER";
+        let _ = rpc_client
+            .subscribe_to_topic(Request::new(GossipsubSubscribeRequest {
+                topic: royalty_topic.to_string(),
+            }))
+            .await?;
+
         let response = rpc_client
             .node_events(Request::new(NodeEventsRequest {}))
             .await?;

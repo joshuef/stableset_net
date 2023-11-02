@@ -141,10 +141,6 @@ impl NodeBuilder {
 
         // Run the node
         node.run(swarm_driver, network_event_receiver);
-        // subscribe to receive transfer notifications over gossipsub topic TRANSFER_NOTIF_TOPIC
-        running_node
-            .subscribe_to_topic(TRANSFER_NOTIF_TOPIC.to_string())
-            .map(|()| info!("Node has been subscribed to gossipsub topic '{TRANSFER_NOTIF_TOPIC}' to receive network royalties payments notifications."))?;
 
         Ok(running_node)
     }
