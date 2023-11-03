@@ -17,7 +17,6 @@ use crate::common::{
 };
 use sn_client::WalletClient;
 use sn_logging::LogBuilder;
-use sn_networking::CLOSE_GROUP_SIZE;
 use sn_node::NodeEvent;
 use sn_transfers::{
     LocalWallet, NanoTokens, NETWORK_ROYALTIES_AMOUNT_PER_ADDR, NETWORK_ROYALTIES_PK,
@@ -123,11 +122,17 @@ async fn nodes_rewards_for_chunks_notifs_over_gossipsub() -> Result<()> {
         paying_wallet_dir.to_path_buf(),
         chunks_dir.path().to_path_buf(),
     )?;
+    let num_of_chunks = chunks.len();
 
-    println!("Paying for {} random addresses...", chunks.len());
+    println!("Paying for {num_of_chunks} random addresses...");
+
     let royalties_pk = NETWORK_ROYALTIES_PK.public_key();
-    let handle =
-        spawn_royalties_payment_listener("https://127.0.0.1:12001".to_string(), royalties_pk, true);
+    let handle = spawn_royalties_payment_listener(
+        "https://127.0.0.1:12001".to_string(),
+        royalties_pk,
+        true,
+        chunks.len(),
+    );
 
     let _cost = files_api
         .pay_and_upload_bytes_test(*content_addr.xorname(), chunks)
@@ -137,7 +142,7 @@ async fn nodes_rewards_for_chunks_notifs_over_gossipsub() -> Result<()> {
 
     let count = handle.await??;
     println!("Number of notifications received by node: {count}");
-    assert_eq!(count, CLOSE_GROUP_SIZE, "Not enough notifications received");
+    assert_eq!(count, num_of_chunks, "Not enough notifications received");
 
     Ok(())
 }
@@ -157,9 +162,14 @@ async fn nodes_rewards_for_register_notifs_over_gossipsub() -> Result<()> {
     let register_addr = XorName::random(&mut rng);
 
     println!("Paying for random Register address {register_addr:?} ...");
+
     let royalties_pk = NETWORK_ROYALTIES_PK.public_key();
-    let handle =
-        spawn_royalties_payment_listener("https://127.0.0.1:12001".to_string(), royalties_pk, true);
+    let handle = spawn_royalties_payment_listener(
+        "https://127.0.0.1:12001".to_string(),
+        royalties_pk,
+        true,
+        1,
+    );
 
     let _register = client
         .create_and_pay_for_register(register_addr, &mut wallet_client, true)
@@ -168,7 +178,7 @@ async fn nodes_rewards_for_register_notifs_over_gossipsub() -> Result<()> {
 
     let count = handle.await??;
     println!("Number of notifications received by node: {count}");
-    assert_eq!(count, CLOSE_GROUP_SIZE, "Not enough notifications received");
+    assert_eq!(count, 1, "Not enough notifications received");
 
     Ok(())
 }
@@ -189,21 +199,33 @@ async fn nodes_rewards_transfer_notifs_filter() -> Result<()> {
         paying_wallet_dir.to_path_buf(),
         chunks_dir.path().to_path_buf(),
     )?;
+    let num_of_chunks = chunks.len();
 
     // this node shall receive the notifications since we set the correct royalties pk as filter
     let royalties_pk = NETWORK_ROYALTIES_PK.public_key();
-    let handle_1 =
-        spawn_royalties_payment_listener("https://127.0.0.1:12001".to_string(), royalties_pk, true);
+    let handle_1 = spawn_royalties_payment_listener(
+        "https://127.0.0.1:12001".to_string(),
+        royalties_pk,
+        true,
+        num_of_chunks,
+    );
     // this other node shall *not* receive any notification since we set the wrong pk as filter
     let random_pk = SecretKey::random().public_key();
-    let handle_2 =
-        spawn_royalties_payment_listener("https://127.0.0.1:12002".to_string(), random_pk, true);
+    let handle_2 = spawn_royalties_payment_listener(
+        "https://127.0.0.1:12002".to_string(),
+        random_pk,
+        true,
+        num_of_chunks,
+    );
     // this other node shall *not* receive any notification either since we don't set any pk as filter
     let handle_3 = spawn_royalties_payment_listener(
         "https://127.0.0.1:12003".to_string(),
         royalties_pk,
         false,
+        num_of_chunks,
     );
+
+    println!("Paying for {num_of_chunks} chunks");
 
     let _cost = files_api
         .pay_and_upload_bytes_test(*content_addr.xorname(), chunks)
@@ -216,10 +238,7 @@ async fn nodes_rewards_transfer_notifs_filter() -> Result<()> {
     let count_3 = handle_3.await??;
     println!("Number of notifications received by node #3: {count_3}");
 
-    assert_eq!(
-        count_1, CLOSE_GROUP_SIZE,
-        "Not enough notifications received"
-    );
+    assert_eq!(count_1, num_of_chunks, "Not enough notifications received");
     assert_eq!(count_2, 0, "Notifications were not expected");
     assert_eq!(count_3, 0, "Notifications were not expected");
 
@@ -275,6 +294,7 @@ fn spawn_royalties_payment_listener(
     endpoint: String,
     royalties_pk: PublicKey,
     set_fiter: bool,
+    expected_cout: usize,
 ) -> JoinHandle<Result<usize, eyre::Report>> {
     tokio::spawn(async move {
         let mut rpc_client = SafeNodeClient::connect(endpoint).await?;
@@ -287,7 +307,7 @@ fn spawn_royalties_payment_listener(
                 .await?;
         }
 
-        let royalty_topic: &str = "ROYALTY_TRANSFER";
+        let royalty_topic: &str = "TRANSFER_NOTIFICATION";
         let _ = rpc_client
             .subscribe_to_topic(Request::new(GossipsubSubscribeRequest {
                 topic: royalty_topic.to_string(),
@@ -310,7 +330,8 @@ fn spawn_royalties_payment_listener(
                         println!("Transfer notif received for key {key:?}");
                         if key == royalties_pk {
                             count += 1;
-                            if count == CLOSE_GROUP_SIZE {
+                            println!("Received {count}/{expected_cout} royalty notifs so far");
+                            if count == expected_cout {
                                 break;
                             }
                         }
