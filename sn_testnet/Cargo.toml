@@ -29,7 +29,7 @@ color-eyre = "~0.6.0"
 eyre = "~0.6.5"
 clap = { version = "3.2.0", features = ["derive", "env"]}
 dirs-next = "2.0.0"
-libp2p = { git="https://github.com/libp2p/rust-libp2p/",  version="0.53",rev="c74ec005fd30bfc408ccee3e7355bf91fe62afdc" }
+libp2p = { git="https://github.com/libp2p/rust-libp2p/",  version="0.53",rev ="89d16e118aedda6ab369c9c1678ff8e45c29d5c7" }
 # watch out updating this, protoc compiler needs to be installed on all build systems
 # arm builds + musl are very problematic
 prost = { version = "0.9" }
