@@ -204,10 +204,7 @@ impl Debug for NetworkEvent {
 
 impl SwarmDriver {
     /// Handle `SwarmEvents`
-    pub(super) fn handle_swarm_events<EventError: std::error::Error>(
-        &mut self,
-        event: SwarmEvent<NodeEvent, EventError>,
-    ) -> Result<()> {
+    pub(super) fn handle_swarm_events(&mut self, event: SwarmEvent<NodeEvent>) -> Result<()> {
         // This does not record all the events. `SwarmEvent::Behaviour(_)` are skipped. Hence `.record()` has to be
         // called individually on each behaviour.
         #[cfg(feature = "open-metrics")]
