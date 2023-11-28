@@ -407,37 +407,7 @@ impl NetworkBuilder {
             .map(|(peer_id, muxer), _| (peer_id, StreamMuxerBox::new(muxer)))
             .boxed();
 
-        let gossipsub = if self.enable_gossip {
-            // Gossipsub behaviour
-            let gossipsub_config = libp2p::gossipsub::ConfigBuilder::default()
-                // disable sending to ALL_PEERS subscribed to a topic, which is the default behaviour
-                .flood_publish(false)
-                // we don't currently require source peer id and/or signing
-                .validation_mode(libp2p::gossipsub::ValidationMode::Permissive)
-                // we use the hash of the msg content as the msg id to deduplicate them
-                .message_id_fn(|msg| {
-                    let mut sha3 = Sha3::v256();
-                    let mut msg_id = [0; 32];
-                    sha3.update(&msg.data);
-                    sha3.finalize(&mut msg_id);
-                    msg_id.into()
-                })
-                // set the heartbeat interval to be higher than default 1sec
-                .heartbeat_interval(Duration::from_secs(5))
-                .build()
-                .map_err(|err| Error::GossipsubConfigError(err.to_string()))?;
-
-            // Set the message authenticity
-            let message_authenticity = libp2p::gossipsub::MessageAuthenticity::Anonymous;
-
-            // build a gossipsub network behaviour
-            let gossipsub: libp2p::gossipsub::Behaviour =
-                libp2p::gossipsub::Behaviour::new(message_authenticity, gossipsub_config)
-                    .expect("Failed to instantiate Gossipsub behaviour.");
-            Some(gossipsub)
-        } else {
-            None
-        };
+        let gossipsub = None;
 
         let gossipsub = Toggle::from(gossipsub);
 
