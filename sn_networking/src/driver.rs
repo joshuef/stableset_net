@@ -471,7 +471,8 @@ impl NetworkBuilder {
 
         let limits = ConnectionLimits::default()
             .with_max_pending_incoming(Some(10))
-            .with_max_established(Some(150))
+            .with_max_pending_outgoing(Some(5))
+            // .with_max_established(Some(15))
             .with_max_established_per_peer(Some(2));
 
         let behaviour = NodeBehaviour {
