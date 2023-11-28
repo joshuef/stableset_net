@@ -33,6 +33,7 @@ use libp2p::mdns;
 use libp2p::quic;
 use libp2p::{
     autonat,
+    connection_limits::{self, ConnectionLimits},
     identity::Keypair,
     kad::{self, QueryId, Record, K_VALUE},
     multiaddr::Protocol,
@@ -131,6 +132,7 @@ pub(super) struct NodeBehaviour {
     pub(super) identify: libp2p::identify::Behaviour,
     pub(super) autonat: Toggle<autonat::Behaviour>,
     pub(super) gossipsub: Toggle<libp2p::gossipsub::Behaviour>,
+    pub(super) connection_limits: connection_limits::Behaviour,
 }
 
 #[derive(Debug)]
@@ -467,6 +469,11 @@ impl NetworkBuilder {
         };
         let autonat = Toggle::from(autonat);
 
+        let limits = ConnectionLimits::default()
+            .with_max_pending_incoming(Some(10))
+            .with_max_established(Some(150))
+            .with_max_established_per_peer(Some(2));
+
         let behaviour = NodeBehaviour {
             request_response,
             kademlia,
@@ -475,6 +482,7 @@ impl NetworkBuilder {
             mdns,
             autonat,
             gossipsub,
+            connection_limits: connection_limits::Behaviour::new(limits),
         };
         let swarm_config = libp2p::swarm::Config::with_tokio_executor()
             .with_idle_connection_timeout(CONNECTION_KEEP_ALIVE_TIMEOUT);

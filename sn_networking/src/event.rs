@@ -101,6 +101,12 @@ impl From<libp2p::gossipsub::Event> for NodeEvent {
     }
 }
 
+impl From<void::Void> for NodeEvent {
+    fn from(_event: void::Void) -> Self {
+        unreachable!("void::Void is uninhabited")
+    }
+}
+
 #[derive(CustomDebug)]
 /// Channel to send the `Response` through.
 pub enum MsgResponder {
