@@ -46,7 +46,7 @@ pub const TRANSFER_NOTIF_TOPIC: &str = "TRANSFER_NOTIFICATION";
 
 /// Interval to trigger replication of all records to all peers.
 /// This is the max time it should take. Minimum interval at any ndoe will be half this
-const PERIODIC_REPLICATION_INTERVAL_MAX_S: i32 = 60;
+const PERIODIC_REPLICATION_INTERVAL_MAX_S: u64 = 60;
 
 /// Helper to build and run a Node
 pub struct NodeBuilder {
@@ -193,10 +193,10 @@ impl Node {
         let _handle = spawn(async move {
             // use a random inactivity timeout to ensure that the nodes do not sync when messages
             // are being transmitted.
-            let replication_interval: i32 = rng.gen_range(
+            let replication_interval: u64 = rng.gen_range(
                 PERIODIC_REPLICATION_INTERVAL_MAX_S / 2..PERIODIC_REPLICATION_INTERVAL_MAX_S,
             );
-            let replication_interval_time = Duration::from_secs(replication_interval as u64);
+            let replication_interval_time = Duration::from_secs(replication_interval);
 
             debug!("Replication interval set to {replication_interval_time:?}");
             let mut replication_interval = tokio::time::interval(replication_interval_time);
