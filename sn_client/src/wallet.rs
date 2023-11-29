@@ -130,7 +130,7 @@ impl WalletClient {
             .network
             .get_store_costs_from_network(address)
             .await
-            .map_err(|error| WalletError::CouldNotSendMoney(error.to_string()))
+            .map_err(|error| WalletError::NoStoreCostCalculated(error.to_string()))
     }
 
     /// Send tokens to nodes closest to the data we want to make storage payment for.
@@ -153,10 +153,9 @@ impl WalletClient {
                 .await
             {
                 Ok(cost) => return Ok(cost),
-                Err(WalletError::CouldNotSendMoney(err)) => {
+                Err(WalletError::NoStoreCostCalculated(err)) => {
                     warn!("Attempt to pay for data failed: {err:?}");
                     last_err = err;
-                    sleep(Duration::from_secs(1)).await;
                 }
                 Err(err) => return Err(err),
             }
@@ -179,7 +178,7 @@ impl WalletClient {
                     .network
                     .get_store_costs_from_network(content_addr.clone())
                     .await
-                    .map_err(|error| WalletError::CouldNotSendMoney(error.to_string()));
+                    .map_err(|error| WalletError::NoStoreCostCalculated(error.to_string()));
 
                 debug!("Storecosts retrieved for {content_addr:?} {cost:?}");
                 (content_addr, cost)
@@ -204,7 +203,7 @@ impl WalletClient {
                     return Err(err);
                 }
                 Err(e) => {
-                    return Err(WalletError::CouldNotSendMoney(format!(
+                    return Err(WalletError::NoStoreCostCalculated(format!(
                         "Storecost get task failed: {e:?}"
                     )));
                 }

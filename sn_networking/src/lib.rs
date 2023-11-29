@@ -284,7 +284,10 @@ impl Network {
 
         // loop over responses, generating an average fee and storing all responses along side
         let mut all_costs = vec![];
-        for response in responses.into_iter().flatten() {
+
+        let flat_responses = responses.into_iter().flatten();
+        
+        for response in flat_responses {
             debug!(
                 "StoreCostReq for {record_address:?} received response: {:?}",
                 response

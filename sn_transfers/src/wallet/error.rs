@@ -27,6 +27,9 @@ pub enum Error {
     /// CashNote add would overflow
     #[error("Total price exceed possible token amount")]
     TotalPriceTooHigh,
+    /// A general error when store cost retrieval fails
+    #[error("Failed to calcuate a store code due to {0}")]
+    NoStoreCostCalculated(String),
     /// A general error when a transfer fails
     #[error("Failed to send tokens due to {0}")]
     CouldNotSendMoney(String),
