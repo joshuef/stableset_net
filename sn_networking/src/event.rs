@@ -557,6 +557,7 @@ impl SwarmDriver {
                 error,
                 peer,
             } => {
+                trace!("OUTBOUNDFAIL. RequestResponse: OutboundFailure for request_id: {request_id:?} and peer: {peer:?}, with error: {error:?}");
                 if let Some(sender) = self.pending_requests.remove(&request_id) {
                     match sender {
                         Some(sender) => {
