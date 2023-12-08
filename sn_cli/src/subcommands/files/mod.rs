@@ -279,12 +279,36 @@ async fn upload_files(
             println!("Failed to upload {failed_uploads_len} chunks with:");
             println!("{recorded_upload_errors:#?}");
         }
+    } else {
+        // log uploaded file information
+        println!("**************************************");
+        println!("*          Uploaded Files            *");
+        println!("**************************************");
+        let file_names_path = root_dir.join("uploaded_files");
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(true)
+            .open(file_names_path)?;
+        for (file_name, addr) in chunk_manager.verified_files() {
+            if let Some(file_name) = file_name.to_str() {
+                println!("\"{file_name}\" {addr:x}");
+                info!("Uploaded {file_name} to {addr:x}");
+                writeln!(file, "{addr:x}: {file_name}")?;
+            } else {
+                println!("\"{file_name:?}\" {addr:x}");
+                info!("Uploaded {file_name:?} to {addr:x}");
+                writeln!(file, "{addr:x}: {file_name:?}")?;
+            }
+        }
+        file.flush()?;
+
+        // log costs
+        let elapsed = format_elapsed_time(now.elapsed());
+        println!("Uploaded {chunks_to_upload_len} chunks in {elapsed}");
+        info!("Uploaded {chunks_to_upload_len} chunks in {elapsed}");
     }
 
-    // log costs
-    let elapsed = format_elapsed_time(now.elapsed());
-    println!("Uploaded {chunks_to_upload_len} chunks in {elapsed}");
-    info!("Uploaded {chunks_to_upload_len} chunks in {elapsed}");
     println!("**************************************");
     println!("*          Payment Details           *");
     println!("**************************************");
@@ -293,29 +317,6 @@ async fn upload_files(
     println!("New wallet balance: {final_balance}");
     info!("Made payment of {total_cost} for {chunks_to_upload_len} chunks");
     info!("New wallet balance: {final_balance}");
-
-    // log uploaded file information
-    println!("**************************************");
-    println!("*          Uploaded Files            *");
-    println!("**************************************");
-    let file_names_path = root_dir.join("uploaded_files");
-    let mut file = std::fs::OpenOptions::new()
-        .create(true)
-        .write(true)
-        .append(true)
-        .open(file_names_path)?;
-    for (file_name, addr) in chunk_manager.verified_files() {
-        if let Some(file_name) = file_name.to_str() {
-            println!("\"{file_name}\" {addr:x}");
-            info!("Uploaded {file_name} to {addr:x}");
-            writeln!(file, "{addr:x}: {file_name}")?;
-        } else {
-            println!("\"{file_name:?}\" {addr:x}");
-            info!("Uploaded {file_name:?} to {addr:x}");
-            writeln!(file, "{addr:x}: {file_name:?}")?;
-        }
-    }
-    file.flush()?;
 
     Ok(())
 }
