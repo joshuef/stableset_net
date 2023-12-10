@@ -313,20 +313,6 @@ async fn upload_files(
 
     progress_bar.finish_and_clear();
 
-    // report errors
-    // let failed_uploads = chunk_manager.get_chunks();
-    // let failed_uploads_len = failed_uploads.len();
-    // if failed_uploads_len != 0 {
-    //     println!("**************************************");
-    //     println!("*              Failures              *");
-    //     println!("**************************************");
-    //     info!("Failed to upload {failed_uploads_len} chunks.");
-
-    //     if failed_uploads_len != 0 {
-    //         println!("Failed to upload {failed_uploads_len} chunks with:");
-    //         // println!("{recorded_upload_errors:#?}");
-    //     }
-    // } else {
     // log uploaded file information
     println!("**************************************");
     println!("*          Uploaded Files            *");
@@ -354,7 +340,6 @@ async fn upload_files(
     let elapsed = format_elapsed_time(now.elapsed());
     println!("Uploaded {chunks_to_upload_len} chunks in {elapsed}");
     info!("Uploaded {chunks_to_upload_len} chunks in {elapsed}");
-    // }
 
     println!("**************************************");
     println!("*          Payment Details           *");
