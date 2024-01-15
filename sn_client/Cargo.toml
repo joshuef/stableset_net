@@ -19,7 +19,7 @@ local-discovery=["sn_networking/local-discovery"]
 open-metrics = ["sn_networking/open-metrics", "prometheus-client"]
 # required to pass on flag to node builds
 quic = ["sn_networking/quic"]
-wasm = ["sn_networking/wasm"]
+wasm = ["sn_networking/wasm", "libp2p/wasm-bindgen"]
 
 [dependencies]
 async-trait = "0.1"
