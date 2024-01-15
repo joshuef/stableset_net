@@ -26,13 +26,13 @@ use crate::{
     Network, CLOSE_GROUP_SIZE,
 };
 use futures::StreamExt;
-#[cfg(any(feature = "quic", feature = "webtransport-websys"))]
+#[cfg(any(feature = "quic", feature = "wasm"))]
 use libp2p::core::muxing::StreamMuxerBox;
 #[cfg(feature = "local-discovery")]
 use libp2p::mdns;
 #[cfg(feature = "quic")]
 use libp2p::quic;
-#[cfg(feature = "webtransport-websys")]
+#[cfg(feature = "wasm")]
 use libp2p::webtransport_websys;
 use libp2p::{
     autonat,
@@ -320,7 +320,7 @@ impl NetworkBuilder {
 
         // Listen on the provided address
         let listen_addr = listen_addr.ok_or(Error::ListenAddressNotProvided)?;
-        #[cfg(not(any(feature = "quic", feature = "webtransport-websys")))]
+        #[cfg(not(any(feature = "quic", feature = "wasm")))]
         let listen_addr = Multiaddr::from(listen_addr.ip()).with(Protocol::Tcp(listen_addr.port()));
 
         #[cfg(feature = "quic")]
@@ -328,7 +328,7 @@ impl NetworkBuilder {
             .with(Protocol::Udp(listen_addr.port()))
             .with(Protocol::QuicV1);
 
-        #[cfg(feature = "webtransport-websys")]
+        #[cfg(feature = "wasm")]
         let listen_addr = Multiaddr::from(listen_addr.ip())
             .with(Protocol::Udp(listen_addr.port()))
             .with(Protocol::WebTransport);
@@ -459,7 +459,7 @@ impl NetworkBuilder {
         };
 
         // Transport
-        #[cfg(not(any(feature = "quic", feature = "webtransport-websys")))]
+        #[cfg(not(any(feature = "quic", feature = "wasm")))]
         let mut transport = libp2p::tcp::tokio::Transport::new(libp2p::tcp::Config::default())
             .upgrade(libp2p::core::upgrade::Version::V1)
             .authenticate(
@@ -474,7 +474,7 @@ impl NetworkBuilder {
             .map(|(peer_id, muxer), _| (peer_id, StreamMuxerBox::new(muxer)))
             .boxed();
 
-        #[cfg(feature = "webtransport-websys")]
+        #[cfg(feature = "wasm")]
         let mut transport =
             webtransport_websys::Transport::new(webtransport_websys::Config::new(&self.keypair))
                 .map(|(peer_id, conn), _| (peer_id, StreamMuxerBox::new(conn)))
