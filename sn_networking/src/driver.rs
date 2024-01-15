@@ -551,7 +551,11 @@ impl NetworkBuilder {
             autonat,
             gossipsub,
         };
+        #[cfg(not(target_arch = "wasm32"))]
         let swarm_config = libp2p::swarm::Config::with_tokio_executor()
+            .with_idle_connection_timeout(CONNECTION_KEEP_ALIVE_TIMEOUT);
+        #[cfg(target_arch = "wasm32")]
+        let swarm_config = libp2p::swarm::Config::with_wasm_executor()
             .with_idle_connection_timeout(CONNECTION_KEEP_ALIVE_TIMEOUT);
 
         let swarm = Swarm::new(transport, behaviour, peer_id, swarm_config);
