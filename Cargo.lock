@@ -910,6 +910,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "console_error_panic_hook"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a06aeb73f470f66dcdbf7223caeebb85984942f22f1adb2a088cf9668146bbbc"
+dependencies = [
+ "cfg-if",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "const-oid"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4679,6 +4689,7 @@ dependencies = [
  "backoff",
  "blsttc",
  "bytes",
+ "console_error_panic_hook",
  "custom_debug",
  "eyre",
  "futures",
@@ -4695,6 +4706,7 @@ dependencies = [
  "self_encryption 0.29.0 (git+https://github.com/maidsafe/self_encryption?branch=SlimDownTokioRequirements)",
  "serde",
  "sn_networking",
+ "sn_peers_acquisition",
  "sn_protocol",
  "sn_registers",
  "sn_transfers",
@@ -4703,6 +4715,7 @@ dependencies = [
  "tiny-keccak",
  "tokio",
  "tracing",
+ "tracing-wasm",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -5660,6 +5673,17 @@ dependencies = [
  "tracing-core",
  "tracing-log 0.2.0",
  "tracing-serde",
+]
+
+[[package]]
+name = "tracing-wasm"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4575c663a174420fa2d78f4108ff68f65bf2fbb7dd89f33749b6e826b3626e07"
+dependencies = [
+ "tracing",
+ "tracing-subscriber",
+ "wasm-bindgen",
 ]
 
 [[package]]

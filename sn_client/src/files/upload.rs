@@ -167,8 +167,10 @@ impl FilesUpload {
 
     /// Uploads the provided chunks to the network.
     /// If you want to track the upload progress, use the `get_upload_events` method.
+    #[cfg(not(target_arch = "wasm32"))] // wasm cant handle fs
     pub async fn upload_chunks(&mut self, mut chunks: Vec<(XorName, PathBuf)>) -> Result<()> {
         trace!("Uploading chunks {:?}", chunks.len());
+
         // make sure we log that the event sender is absent atleast once
         self.logged_event_sender_absence = false;
 
@@ -226,6 +228,7 @@ impl FilesUpload {
     /// Task groups can be run in parallel to each other, however sometimes requires input from previous group.
     /// Within each group, for group 1 and 3, the mini tasks inside can be parallel to each other.
     /// However for group 2, mini tasks inside has to be undertaken sequentially.
+    #[cfg(not(target_arch = "wasm32"))] // wasm cant handle fs
     async fn upload(
         &mut self,
         mut chunks: Vec<(XorName, PathBuf)>,
@@ -399,6 +402,7 @@ impl FilesUpload {
 
     /// Store chunks from chunk_paths (assuming payments have already been made and are in our local wallet).
     /// If verify_store is true, we will attempt to fetch the chunks from the network to verify it is stored.
+    #[cfg(not(target_arch = "wasm32"))] // wasm cant handle fs
     async fn upload_chunk(
         files_api: FilesApi,
         chunk_info: ChunkInfo,

@@ -59,13 +59,25 @@ workspace = true
 # wasm build requirements
 [lib]
 crate-type = ["cdylib", "rlib"]
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2.12", features = ["js"] }
 sn_networking = { path = "../sn_networking", version = "0.12.25", features = ["wasm"]}
 wasm-bindgen = "0.2.90"
 wasm-bindgen-futures = "0.4.40"
+sn_peers_acquisition= { path="../sn_peers_acquisition", version = "0.2.0" }
+console_error_panic_hook = "0.1.6"
+tracing-wasm = "0.2.1"
+
 # The `web-sys` crate allows you to interact with the various browser APIs,
 # like the DOM.
 [target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
 version = "0.3.22"
 features = ["console"]
+
+# disable wasm opt for now
+[package.metadata]
+wasm-opt = false
+
+[profile.release]
+debug = true

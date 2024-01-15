@@ -30,6 +30,7 @@ pub(crate) enum DataMapLevel {
 }
 
 #[allow(unused)]
+#[cfg(not(target_arch = "wasm32"))] // wasm cant handle fs
 pub(crate) fn encrypt_from_path(path: &Path, output_dir: &Path) -> Result<(Chunk, Vec<XorName>)> {
     let (data_map, mut encrypted_chunks) = encrypt_file(path, output_dir)?;
 
