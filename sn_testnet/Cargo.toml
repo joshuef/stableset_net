@@ -44,7 +44,7 @@ libp2p-identity = { version="0.2.7", features = ["rand"] }
 
 [dependencies.tokio]
 version = "1.17.0"
-features = ["fs", "io-util", "macros", "rt", "rt-multi-thread", "sync"]
+features = ["io-util", "macros", "rt", "sync"]
 
 [build-dependencies]
 # watch out updating this, protoc compiler needs to be installed on all build systems
