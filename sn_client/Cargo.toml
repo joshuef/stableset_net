@@ -10,8 +10,7 @@ readme = "README.md"
 repository = "https://github.com/maidsafe/safe_network"
 version = "0.101.11"
 
-[lib]
-crate-type = ["cdylib", "rlib"]
+
 
 
 [features]
@@ -59,6 +58,8 @@ libp2p-identity = { version="0.2.7", features = ["rand"] }
 [lints]
 workspace = true
 
-
+# wasm build requirements
+[lib]
+crate-type = ["cdylib", "rlib"]
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2.12", features = ["js"] }

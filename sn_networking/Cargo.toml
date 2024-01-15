@@ -52,5 +52,9 @@ workspace = true
 
 
 
+
+# wasm build requirements
+[lib]
+crate-type = ["cdylib", "rlib"]
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2.12", features = ["js"] }
