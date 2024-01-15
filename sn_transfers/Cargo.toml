@@ -14,7 +14,6 @@ version = "0.14.37"
 bls = { package = "blsttc", version = "8.0.1" }
 custom_debug = "~0.5.0"
 dirs-next = "~2.0.0"
-fs2 = "0.4.3"
 hex = "~0.4.3"
 itertools = "~0.11.0"
 lazy_static = "~1.4.0"
@@ -33,6 +32,10 @@ tokio = { version = "1.32.0", features = ["macros", "rt"] }
 criterion = "0.4.0"
 assert_fs = "1.0.0"
 eyre = "0.6.8"
+
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+fs2 = "0.4.3"
 
 [target."cfg(unix)".dev-dependencies.pprof]
 version = "0.11.0"
