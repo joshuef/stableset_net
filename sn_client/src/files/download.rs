@@ -13,10 +13,11 @@ use crate::{
 };
 use bytes::Bytes;
 use futures::StreamExt;
+use instant::Instant;
 use itertools::Itertools;
 use self_encryption::{decrypt_full_set, DataMap, EncryptedChunk, StreamSelfDecryptor};
 use sn_protocol::storage::{Chunk, ChunkAddress};
-use std::{collections::HashMap, fs, path::PathBuf, time::Instant};
+use std::{collections::HashMap, fs, path::PathBuf};
 use tokio::sync::mpsc::{self};
 use xor_name::XorName;
 

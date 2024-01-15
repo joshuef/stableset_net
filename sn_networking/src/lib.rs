@@ -56,12 +56,12 @@ use sn_transfers::{MainPubkey, NanoTokens, PaymentQuote};
 use std::{
     collections::{BTreeMap, HashMap},
     path::PathBuf,
-    time::Duration,
 };
 use tokio::sync::{
     mpsc::{self, Sender},
     oneshot,
 };
+use tokio::time::Duration;
 
 /// The type of quote for a selected payee.
 pub type PayeeQuote = (PeerId, MainPubkey, PaymentQuote);

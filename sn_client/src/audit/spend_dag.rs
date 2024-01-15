@@ -10,6 +10,7 @@ use super::Client;
 use crate::Error;
 
 use futures::future::join_all;
+use instant::Instant;
 use petgraph::dot::Dot;
 use petgraph::graph::{DiGraph, NodeIndex};
 use sn_transfers::{NanoTokens, SignedSpend, SpendAddress, WalletError, WalletResult};
@@ -144,7 +145,7 @@ impl Client {
         let mut txs_to_follow = BTreeSet::from_iter([first_spend.spend.spent_tx]);
         let mut verified_tx = BTreeSet::new();
         let mut gen = 0;
-        let start = std::time::Instant::now();
+        let start = Instant::now();
 
         while !txs_to_follow.is_empty() {
             let mut next_gen_tx = BTreeSet::new();

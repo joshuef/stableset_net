@@ -59,11 +59,13 @@ use std::{
     net::SocketAddr,
     num::NonZeroUsize,
     path::PathBuf,
-    time::{Duration, Instant},
 };
 use tiny_keccak::{Hasher, Sha3};
 use tokio::sync::{mpsc, oneshot};
+use tokio::time::Duration;
 use tracing::warn;
+
+use instant::Instant;
 
 /// The ways in which the Get Closest queries are used.
 pub(crate) enum PendingGetClosestType {
@@ -343,6 +345,7 @@ impl NetworkBuilder {
 
     /// Same as `build_node` API but creates the network components in client mode
     pub fn build_client(self) -> Result<(Network, mpsc::Receiver<NetworkEvent>, SwarmDriver)> {
+        debug!("Building client");
         // Create a Kademlia behaviour for client mode, i.e. set req/resp protocol
         // to outbound-only mode and don't listen on any address
         let mut kad_cfg = kad::Config::default(); // default query timeout is 60 secs
@@ -356,6 +359,8 @@ impl NetworkBuilder {
             .set_replication_factor(
                 NonZeroUsize::new(CLOSE_GROUP_SIZE).ok_or_else(|| Error::InvalidCloseGroupSize)?,
             );
+
+        debug!("Building client 2");
 
         let (network, net_event_recv, driver) = self.build(
             kad_cfg,
@@ -379,7 +384,11 @@ impl NetworkBuilder {
     ) -> Result<(Network, mpsc::Receiver<NetworkEvent>, SwarmDriver)> {
         let peer_id = PeerId::from(self.keypair.public());
         // vdash metric (if modified please notify at https://github.com/happybeing/vdash/issues):
-        info!("Node (PID: {}) with PeerId: {peer_id}", std::process::id());
+        #[cfg(not(target_arch = "wasm32"))]
+        info!(
+            "Process (PID: {}) with PeerId: {peer_id}",
+            std::process::id()
+        );
         info!(
             "Self PeerID {peer_id} is represented as kbucket_key {:?}",
             PrettyPrintKBucketKey(NetworkAddress::from_peer(peer_id).as_kbucket_key())
@@ -551,6 +560,8 @@ impl NetworkBuilder {
             autonat,
             gossipsub,
         };
+
+        debug!("cccccccc");
         #[cfg(not(target_arch = "wasm32"))]
         let swarm_config = libp2p::swarm::Config::with_tokio_executor()
             .with_idle_connection_timeout(CONNECTION_KEEP_ALIVE_TIMEOUT);
@@ -558,7 +569,15 @@ impl NetworkBuilder {
         let swarm_config = libp2p::swarm::Config::with_wasm_executor()
             .with_idle_connection_timeout(CONNECTION_KEEP_ALIVE_TIMEOUT);
 
+        debug!("cccccccccccccccc2222221112cc");
         let swarm = Swarm::new(transport, behaviour, peer_id, swarm_config);
+
+        debug!("cccccccccccccccc22222222222cc");
+
+        let bootstrap = ContinuousBootstrap::new();
+        debug!("continue");
+        let replication_fetcher = ReplicationFetcher::new(peer_id);
+        debug!("repl");
 
         let swarm_driver = SwarmDriver {
             swarm,
@@ -566,9 +585,9 @@ impl NetworkBuilder {
             local: self.local,
             is_client,
             connected_peers: 0,
-            bootstrap: ContinuousBootstrap::new(),
+            bootstrap,
             close_group: Default::default(),
-            replication_fetcher: ReplicationFetcher::new(peer_id),
+            replication_fetcher,
             #[cfg(feature = "open-metrics")]
             network_metrics,
             cmd_receiver: swarm_cmd_receiver,
@@ -586,6 +605,8 @@ impl NetworkBuilder {
             handling_statistics: Default::default(),
             handled_times: 0,
         };
+
+        debug!("swarm driver up");
 
         Ok((
             Network {
@@ -660,7 +681,7 @@ impl SwarmDriver {
                 },
                 some_cmd = self.cmd_receiver.recv() => match some_cmd {
                     Some(cmd) => {
-                        let start = std::time::Instant::now();
+                        let start = Instant::now();
                         let cmd_string = format!("{cmd:?}");
                         if let Err(err) = self.handle_cmd(cmd) {
                             warn!("Error while handling cmd: {err}");

@@ -8,8 +8,8 @@
 
 use libp2p::metrics::{Metrics as Libp2pMetrics, Recorder};
 use prometheus_client::{metrics::gauge::Gauge, registry::Registry};
-use std::time::Duration;
 use sysinfo::{Pid, PidExt, ProcessExt, ProcessRefreshKind, System, SystemExt};
+use tokio::time::Duration;
 
 const UPDATE_INTERVAL: Duration = Duration::from_secs(15);
 const TO_MB: u64 = 1_000_000;

@@ -10,7 +10,7 @@ repository = "https://github.com/maidsafe/safe_network"
 version = "0.10.8"
 
 [features]
-test-utils=["dirs-next", "serde_json"]
+test-utils=[]
 rpc=["tonic", "prost"]
 
 [dependencies]

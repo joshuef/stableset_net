@@ -7,6 +7,7 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 
 use eyre::{bail, Result};
+use instant::Instant;
 use lazy_static::lazy_static;
 use sn_client::{send, Client};
 use sn_peers_acquisition::parse_peer_addr;
@@ -16,9 +17,9 @@ use sn_transfers::{create_faucet_wallet, LocalWallet, NanoTokens, Transfer};
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::Path,
-    time::{Duration, Instant},
 };
 use tokio::sync::Mutex;
+use tokio::time::Duration;
 use tracing::{error, info, warn};
 
 pub const PAYING_WALLET_INITIAL_BALANCE: u64 = 100_000_000_000_000;

@@ -15,6 +15,7 @@ use bls::{PublicKey, SecretKey, Signature};
 use bytes::Bytes;
 use futures::future::join_all;
 // use indicatif::ProgressBar;
+use instant::Instant;
 use libp2p::{
     identity::Keypair,
     kad::{Quorum, Record},
@@ -42,19 +43,23 @@ use std::{
     collections::{HashMap, HashSet},
     num::NonZeroUsize,
     path::PathBuf,
-    time::Duration,
 };
 use tokio::task::spawn;
+use tokio::time::Duration;
 use tracing::trace;
 use xor_name::XorName;
 
 /// The maximum duration the client will wait for a connection to the network before timing out.
-const CONNECTION_TIMEOUT: Duration = Duration::from_secs(180);
+const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// The timeout duration for the client to receive any response from the network.
 const INACTIVITY_TIMEOUT: Duration = Duration::from_secs(30);
 
 impl Client {
+    /// A quick client that only takes some peers to connect to
+    pub async fn quick_start(peers: Option<Vec<Multiaddr>>) -> Result<Self> {
+        Self::new(SecretKey::random(), peers, false, None).await
+    }
     /// Instantiate a new client.
     ///
     /// Optionally specify the maximum time the client will wait for a connection to the network before timing out.
@@ -73,14 +78,23 @@ impl Client {
 
         info!("Startup a client with peers {peers:?} and local {local:?} flag");
         info!("Starting Kad swarm in client mode...");
+        debug!("Starting Kad swarm in client mode.1..");
+        trace!("Starting Kad swarm in client mode..2.");
 
-        let mut network_builder =
-            NetworkBuilder::new(Keypair::generate_ed25519(), local, std::env::temp_dir());
+        #[cfg(target_arch = "wasm32")]
+        let root_dir = PathBuf::from("dumb");
+        #[cfg(not(target_arch = "wasm32"))]
+        let root_dir = std::env::temp_dir();
+        trace!("Starting Kad swarm in client mode..{root_dir:?}.");
+
+        let mut network_builder = NetworkBuilder::new(Keypair::generate_ed25519(), local, root_dir);
 
         if enable_gossip {
             network_builder.enable_gossip();
         }
 
+        info!("Network built");
+        debug!("Network built debug");
         #[cfg(feature = "open-metrics")]
         network_builder.metrics_registry(Registry::default());
 
@@ -105,20 +119,24 @@ impl Client {
             swarm_driver.run()
         });
 
+
+        trace!("Started up client swarm_driver");
+        
         // spawn task to dial to the given peers
         let network_clone = network.clone();
         let _handle = spawn(async move {
             if let Some(peers) = peers {
                 for addr in peers {
                     trace!(%addr, "dialing initial peer");
-
+                    
                     if let Err(err) = network_clone.dial(addr.clone()).await {
                         tracing::error!(%addr, "Failed to dial: {err:?}");
                     };
                 }
             }
         });
-
+        
+        trace!("Started dialling....");
         // spawn task to wait for NetworkEvent and check for inactivity
         let mut client_clone = client.clone();
         let _event_handler = spawn(async move {
@@ -134,7 +152,7 @@ impl Client {
                             }
                         };
 
-                        let start = std::time::Instant::now();
+                        let start = Instant::now();
                         let event_string = format!("{the_event:?}");
                         if let Err(err) = client_clone.handle_network_event(the_event) {
                             warn!("Error handling network event: {err}");
@@ -157,6 +175,10 @@ impl Client {
                 }
             }
         });
+
+
+        trace!("after dialling....");
+
 
         // loop to connect to the network
         let mut is_connected = false;
@@ -431,6 +453,12 @@ impl Client {
     }
 
     /// Retrieve a `Chunk` from the kad network.
+    // #[cfg(target_arch = "wasm32")]
+    pub async fn get_chunk_by_xor(&self, address: &[u8]) -> Result<Chunk> {
+        self.get_chunk(ChunkAddress::new(XorName::from_content(address)), false)
+            .await
+    }
+
     pub async fn get_chunk(&self, address: ChunkAddress, show_holders: bool) -> Result<Chunk> {
         info!("Getting chunk: {address:?}");
         let key = NetworkAddress::from_chunk_address(address).to_record_key();
@@ -675,6 +703,7 @@ impl Client {
     /// Verify that chunks were uploaded
     ///
     /// Returns a vec of any chunks that could not be verified
+    #[cfg(not(target_arch = "wasm32"))] // wasm cant handle fs
     pub async fn verify_uploaded_chunks(
         &self,
         chunks_paths: &[(XorName, PathBuf)],
@@ -686,6 +715,7 @@ impl Client {
             // now we try and get batched chunks, keep track of any that fail
             // Iterate over each uploaded chunk
             let mut verify_handles = Vec::new();
+
             for (name, chunk_path) in chunks_batch.iter().cloned() {
                 let client = self.clone();
                 // Spawn a new task to fetch each chunk concurrently
