@@ -14,7 +14,7 @@ version = "0.12.29"
 default=[]
 local-discovery=["libp2p/mdns"]
 quic=["libp2p/quic", "tokio/parking_lot"] 
-wasm=["libp2p/webtransport-websys"]
+wasm=["libp2p/webtransport-websys", "libp2p/wasm-bindgen"]
 open-metrics=["libp2p/metrics", "prometheus-client", "hyper", "sysinfo"]
 
 [dependencies]
