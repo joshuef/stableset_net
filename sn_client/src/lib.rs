@@ -35,7 +35,7 @@ pub use self::{
 };
 
 use self::event::ClientEventsChannel;
-use indicatif::ProgressBar;
+// use indicatif::ProgressBar;
 use sn_networking::Network;
 
 /// Client API implementation to store and get data.
@@ -45,5 +45,5 @@ pub struct Client {
     events_channel: ClientEventsChannel,
     signer: bls::SecretKey,
     peers_added: usize,
-    progress: Option<ProgressBar>,
+    // progress: Option<ProgressBar>,
 }

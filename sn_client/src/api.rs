@@ -14,7 +14,7 @@ use super::{
 use bls::{PublicKey, SecretKey, Signature};
 use bytes::Bytes;
 use futures::future::join_all;
-use indicatif::ProgressBar;
+// use indicatif::ProgressBar;
 use libp2p::{
     identity::Keypair,
     kad::{Quorum, Record},
@@ -93,7 +93,6 @@ impl Client {
             events_channel,
             signer,
             peers_added: 0,
-            progress: Some(Self::setup_connection_progress()),
         };
 
         // subscribe to our events channel first, so we don't have intermittent
@@ -210,19 +209,19 @@ impl Client {
         Ok(client)
     }
 
-    /// Set up our initial progress bar for network connectivity
-    fn setup_connection_progress() -> ProgressBar {
-        // Network connection progress bar
-        let progress = ProgressBar::new_spinner();
-        progress.enable_steady_tick(Duration::from_millis(120));
-        progress.set_message("Connecting to The SAFE Network...");
-        let new_style = progress.style().tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈🔗");
-        progress.set_style(new_style);
+    // /// Set up our initial progress bar for network connectivity
+    // fn setup_connection_progress() -> ProgressBar {
+    //     // Network connection progress bar
+    //     let progress = ProgressBar::new_spinner();
+    //     progress.enable_steady_tick(Duration::from_millis(120));
+    //     progress.set_message("Connecting to The SAFE Network...");
+    //     let new_style = progress.style().tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈🔗");
+    //     progress.set_style(new_style);
 
-        progress.set_message("Connecting to The SAFE Network...");
+    //     progress.set_message("Connecting to The SAFE Network...");
 
-        progress
-    }
+    //     progress
+    // }
 
     fn handle_network_event(&mut self, event: NetworkEvent) -> Result<()> {
         match event {
@@ -235,12 +234,6 @@ impl Client {
                 // To avoid such delay may fail the query with RecordNotFound,
                 // wait till certain amount of peers populated into RT
                 if self.peers_added >= CLOSE_GROUP_SIZE {
-                    if let Some(progress) = &self.progress {
-                        progress.finish_with_message("Connected to the Network");
-                        // Remove the progress bar
-                        self.progress = None;
-                    }
-
                     self.events_channel
                         .broadcast(ClientEvent::ConnectedToNetwork)?;
                 } else {
@@ -248,13 +241,6 @@ impl Client {
                         "{}/{CLOSE_GROUP_SIZE} initial peers found.",
                         self.peers_added
                     );
-
-                    if let Some(progress) = &self.progress {
-                        progress.set_message(format!(
-                            "{}/{CLOSE_GROUP_SIZE} initial peers found.",
-                            self.peers_added
-                        ));
-                    }
                 }
             }
             NetworkEvent::GossipsubMsgReceived { topic, msg }
