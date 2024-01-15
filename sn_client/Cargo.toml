@@ -20,7 +20,7 @@ local-discovery=["sn_networking/local-discovery"]
 open-metrics = ["sn_networking/open-metrics", "prometheus-client"]
 # required to pass on flag to node builds
 quic = ["sn_networking/quic"]
-webtransport-websys = ["sn_networking/webtransport-websys"]
+wasms = ["sn_networking/wasm"]
 
 [dependencies]
 async-trait = "0.1"
@@ -47,7 +47,7 @@ sn_transfers = { path = "../sn_transfers", version = "0.14.37" }
 tempfile = "3.6.0"
 thiserror = "1.0.23"
 tiny-keccak = "~2.0.2"
-tokio = { version = "1.32.0", features = ["io-util", "macros", "parking_lot", "rt", "sync", "time", "fs"] }
+tokio = { version = "1.32.0", features = ["io-util", "macros", "rt", "sync", "time"] }
 tracing = { version = "~0.1.26" }
 xor_name = "5.0.0"
 

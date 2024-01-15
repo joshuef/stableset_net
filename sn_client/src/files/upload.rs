@@ -406,7 +406,7 @@ impl FilesUpload {
         verify_store: bool,
     ) -> (ChunkInfo, Result<()>) {
         let chunk_address = ChunkAddress::new(chunk_info.name);
-        let bytes = match tokio::fs::read(chunk_info.path.clone()).await {
+        let bytes = match std::fs::read(chunk_info.path.clone()) {
             Ok(bytes) => Bytes::from(bytes),
             Err(error) => {
                 warn!("Chunk {chunk_address:?} could not be read from the system from {:?}. 
