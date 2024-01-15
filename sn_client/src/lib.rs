@@ -63,6 +63,9 @@ pub async fn main_js() -> std::result::Result<(), JsValue> {
         console::log_1(&JsValue::from_str("quick_start err!.{error:?}"));
 
     }
+
+    console::log_1(&JsValue::from_str("Supposedly a client started!"));
+
     Ok(())
 }
 
