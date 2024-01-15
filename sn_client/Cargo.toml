@@ -62,5 +62,10 @@ crate-type = ["cdylib", "rlib"]
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2.12", features = ["js"] }
 sn_networking = { path = "../sn_networking", version = "0.12.25", features = ["wasm"]}
-# wasm = ["sn_networking/wasm", "libp2p/wasm-bindgen"]
-
+wasm-bindgen = "0.2.90"
+wasm-bindgen-futures = "0.4.40"
+# The `web-sys` crate allows you to interact with the various browser APIs,
+# like the DOM.
+[target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
+version = "0.3.22"
+features = ["console"]

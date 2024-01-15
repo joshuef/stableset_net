@@ -55,11 +55,10 @@ const CONNECTION_TIMEOUT: Duration = Duration::from_secs(180);
 const INACTIVITY_TIMEOUT: Duration = Duration::from_secs(30);
 
 impl Client {
-    /// A quick client that only takes some peers to connect to
-    #[cfg(target_arch = "wasm32")]
-    pub async fn quick_client(peers: Option<Vec<Multiaddr>>) -> Result<Self> {
-        Self::new(SecretKey::random(), peers, false, None).await
-    }
+  /// A quick client that only takes some peers to connect to
+  pub async fn quick_start(peers: Option<Vec<Multiaddr>>) -> Result<Self> {
+    Self::new(SecretKey::random(), peers, false, None).await
+}
     /// Instantiate a new client.
     ///
     /// Optionally specify the maximum time the client will wait for a connection to the network before timing out.
