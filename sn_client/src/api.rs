@@ -46,10 +46,10 @@ use std::{
 };
 use tracing::trace;
 use tokio::task::spawn;
-#[cfg(not(target_arch = "wasm"))]
+#[cfg(not(target_arch = "wasm32"))]
 use tokio::time::{interval, timeout};
 use tokio::time::Duration;
-#[cfg(target_arch = "wasm")]
+#[cfg(target_arch = "wasm32")]
 use wasmtimer::tokio::{interval, timeout};
 use xor_name::XorName;
 
