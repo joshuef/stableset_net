@@ -572,7 +572,7 @@ impl NetworkBuilder {
 
         debug!("cccccccccccccccc22222222222cc");
         
-        let boostrap = ContinuousBootstrap::new();
+        let bootstrap = ContinuousBootstrap::new();
         debug!("continue");
         let replication_fetcher =  ReplicationFetcher::new(peer_id);
         debug!("repl");
