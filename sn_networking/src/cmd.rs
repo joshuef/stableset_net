@@ -31,6 +31,8 @@ use std::{
 use tokio::sync::oneshot;
 use xor_name::XorName;
 
+use instant::Instant;
+
 /// Commands to send to the Swarm
 #[allow(clippy::large_enum_variant)]
 pub enum SwarmCmd {
@@ -296,7 +298,7 @@ pub struct SwarmLocalState {
 
 impl SwarmDriver {
     pub(crate) fn handle_cmd(&mut self, cmd: SwarmCmd) -> Result<(), Error> {
-        let start = tokio::time::Instant::now();
+        let start = Instant::now();
         let mut cmd_string = "";
         match cmd {
             SwarmCmd::TriggerIntervalReplication => {

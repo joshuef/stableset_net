@@ -22,7 +22,7 @@ use crate::{
     network_discovery::NetworkDiscovery,
     record_store::{ClientRecordStore, NodeRecordStore, NodeRecordStoreConfig},
     record_store_api::UnifiedRecordStore,
-    replication_fetcher::{self, ReplicationFetcher},
+    replication_fetcher::ReplicationFetcher,
     Network, CLOSE_GROUP_SIZE,
 };
 use futures::StreamExt;
@@ -62,8 +62,10 @@ use std::{
 };
 use tiny_keccak::{Hasher, Sha3};
 use tokio::sync::{mpsc, oneshot};
-use tokio::time::{Duration, Instant};
+use tokio::time::Duration;
 use tracing::warn;
+
+use instant::Instant;
 
 /// The ways in which the Get Closest queries are used.
 pub(crate) enum PendingGetClosestType {
@@ -679,7 +681,7 @@ impl SwarmDriver {
                 },
                 some_cmd = self.cmd_receiver.recv() => match some_cmd {
                     Some(cmd) => {
-                        let start = tokio::time::Instant::now();
+                        let start = Instant::now();
                         let cmd_string = format!("{cmd:?}");
                         if let Err(err) = self.handle_cmd(cmd) {
                             warn!("Error while handling cmd: {err}");

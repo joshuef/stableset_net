@@ -11,6 +11,7 @@ use crate::Error;
 use super::{error::Result, Client};
 use backoff::{backoff::Backoff, ExponentialBackoff};
 use futures::{future::join_all, TryFutureExt};
+use instant::Instant;
 use libp2p::PeerId;
 use sn_networking::{GetRecordError, PayeeQuote};
 use sn_protocol::NetworkAddress;
@@ -22,7 +23,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     iter::Iterator,
 };
-use tokio::time::{Duration, Instant};
+use tokio::time::Duration;
 use tokio::{task::JoinSet, time::sleep};
 use xor_name::XorName;
 

@@ -28,6 +28,7 @@ bytes = { version = "1.0.1", features = ["serde"] }
 custom_debug = "~0.5.0"
 futures = "~0.3.13"
 hex = "~0.4.3"
+instant = "0.1.12" # Allows for cross platform instant and wasm time handling
 itertools = "~0.11.0"
 libp2p = { version="0.53", features = ["identify"] }
 petgraph = "0.6.4"
@@ -68,7 +69,6 @@ wasm-bindgen-futures = "0.4.40"
 sn_peers_acquisition= { path="../sn_peers_acquisition", version = "0.2.0" }
 console_error_panic_hook = "0.1.6"
 tracing-wasm = "0.2.1"
-wasmtimer= "0.2.0"
 
 # The `web-sys` crate allows you to interact with the various browser APIs,
 # like the DOM.

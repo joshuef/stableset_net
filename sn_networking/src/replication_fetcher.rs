@@ -14,7 +14,8 @@ use libp2p::{
 use sn_protocol::{storage::RecordType, NetworkAddress, PrettyPrintRecordKey};
 use std::collections::HashMap;
 
-use tokio::time::{Duration, Instant};
+use instant::Instant;
+use tokio::time::Duration;
 
 // Max parallel fetches that can be undertaken at the same time.
 const MAX_PARALLEL_FETCH: usize = K_VALUE.get();

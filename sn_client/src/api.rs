@@ -15,6 +15,7 @@ use bls::{PublicKey, SecretKey, Signature};
 use bytes::Bytes;
 use futures::future::join_all;
 // use indicatif::ProgressBar;
+use instant::Instant;
 use libp2p::{
     identity::Keypair,
     kad::{Quorum, Record},
@@ -147,7 +148,7 @@ impl Client {
                             }
                         };
 
-                        let start = tokio::time::Instant::now();
+                        let start = Instant::now();
                         let event_string = format!("{the_event:?}");
                         if let Err(err) = client_clone.handle_network_event(the_event) {
                             warn!("Error handling network event: {err}");

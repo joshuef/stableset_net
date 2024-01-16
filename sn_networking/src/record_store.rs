@@ -8,6 +8,7 @@
 #![allow(clippy::mutable_key_type)] // for the Bytes in NetworkAddress
 
 use crate::{cmd::SwarmCmd, event::NetworkEvent, send_swarm_cmd};
+use instant::Instant;
 use libp2p::{
     identity::PeerId,
     kad::{
@@ -117,7 +118,7 @@ impl NodeRecordStore {
     }
 
     fn read_from_disk<'a>(key: &Key, storage_dir: &Path) -> Option<Cow<'a, Record>> {
-        let start = tokio::time::Instant::now();
+        let start = Instant::now();
         let filename = Self::key_to_hex(key);
         let file_path = storage_dir.join(&filename);
 
@@ -539,9 +540,9 @@ mod tests {
     };
     use quickcheck::*;
     use sn_protocol::storage::{try_serialize_record, ChunkAddress};
-    use std::{collections::BTreeMap};
+    use std::collections::BTreeMap;
     use tokio::runtime::Runtime;
-    use tokio::time::Duration;
+    use Duration;
 
     const MULITHASH_CODE: u64 = 0x12;
 
@@ -682,7 +683,7 @@ mod tests {
             {
                 break;
             }
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            sleep(Duration::from_millis(100)).await;
             iteration += 1;
         }
         if iteration == max_iterations {
@@ -775,7 +776,7 @@ mod tests {
                     {
                         break;
                     }
-                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    sleep(Duration::from_millis(100)).await;
                     iteration += 1;
                 }
                 if iteration == max_iterations {
@@ -791,7 +792,7 @@ mod tests {
                 if store.get(&retained_key).is_some() {
                     break;
                 }
-                tokio::time::sleep(Duration::from_millis(100)).await;
+                sleep(Duration::from_millis(100)).await;
                 iteration += 1;
             }
             if iteration == max_iterations {
