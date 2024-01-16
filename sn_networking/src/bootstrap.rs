@@ -8,12 +8,11 @@
 
 use crate::{driver::PendingGetClosestType, SwarmDriver};
 use instant::Instant;
-use tokio::time::{Duration, Interval};
-#[cfg(not(target_arch="wasm"))]
+#[cfg(not(target_arch = "wasm"))]
 use tokio::time::interval;
-#[cfg(target_arch="wasm")]
+use tokio::time::{Duration, Interval};
+#[cfg(target_arch = "wasm")]
 use wasmtimer::tokio::interval;
-
 
 /// The interval in which kad.bootstrap is called
 pub(crate) const BOOTSTRAP_INTERVAL: Duration = Duration::from_secs(5);

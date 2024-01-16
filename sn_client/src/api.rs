@@ -45,14 +45,13 @@ use std::{
     path::PathBuf,
 };
 use tokio::task::spawn;
+#[cfg(not(target_arch = "wasm"))]
+use tokio::time::interval;
 use tokio::time::Duration;
 use tracing::trace;
-use xor_name::XorName;
-#[cfg(not(target_arch="wasm"))]
-use tokio::time::interval;
-#[cfg(target_arch="wasm")]
+#[cfg(target_arch = "wasm")]
 use wasmtimer::tokio::interval;
-
+use xor_name::XorName;
 
 /// The maximum duration the client will wait for a connection to the network before timing out.
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
@@ -124,23 +123,22 @@ impl Client {
             swarm_driver.run()
         });
 
-
         trace!("Started up client swarm_driver");
-        
+
         // spawn task to dial to the given peers
         let network_clone = network.clone();
         let _handle = spawn(async move {
             if let Some(peers) = peers {
                 for addr in peers {
                     trace!(%addr, "dialing initial peer");
-                    
+
                     if let Err(err) = network_clone.dial(addr.clone()).await {
                         tracing::error!(%addr, "Failed to dial: {err:?}");
                     };
                 }
             }
         });
-        
+
         trace!("Started dialling....");
         // spawn task to wait for NetworkEvent and check for inactivity
         let mut client_clone = client.clone();
@@ -181,14 +179,12 @@ impl Client {
             }
         });
 
-
         trace!("after dialling....");
-
 
         // loop to connect to the network
         let mut is_connected = false;
         let connection_timeout = connection_timeout.unwrap_or(CONNECTION_TIMEOUT);
-        let mut connection_timeout_interval interval(connection_timeout);
+        let mut connection_timeout_interval = interval(connection_timeout);
         // first tick completes immediately
         connection_timeout_interval.tick().await;
 

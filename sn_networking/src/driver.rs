@@ -62,12 +62,11 @@ use std::{
 };
 use tiny_keccak::{Hasher, Sha3};
 use tokio::sync::{mpsc, oneshot};
-use tokio::time::Duration;
-#[cfg(not(target_arch="wasm"))]
+#[cfg(not(target_arch = "wasm"))]
 use tokio::time::interval;
-#[cfg(target_arch="wasm")]
+use tokio::time::Duration;
+#[cfg(target_arch = "wasm")]
 use wasmtimer::tokio::interval;
-
 
 use tracing::warn;
 
