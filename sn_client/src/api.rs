@@ -44,11 +44,11 @@ use std::{
     num::NonZeroUsize,
     path::PathBuf,
 };
-use tracing::trace;
 use tokio::task::spawn;
+use tokio::time::Duration;
 #[cfg(not(target_arch = "wasm32"))]
 use tokio::time::{interval, timeout};
-use tokio::time::Duration;
+use tracing::trace;
 #[cfg(target_arch = "wasm32")]
 use wasmtimer::tokio::{interval, timeout};
 use xor_name::XorName;
@@ -144,8 +144,7 @@ impl Client {
         let mut client_clone = client.clone();
         let _event_handler = spawn(async move {
             loop {
-                match timeout(INACTIVITY_TIMEOUT, network_event_receiver.recv()).await
-                {
+                match timeout(INACTIVITY_TIMEOUT, network_event_receiver.recv()).await {
                     Ok(event) => {
                         let the_event = match event {
                             Some(the_event) => the_event,
@@ -186,7 +185,7 @@ impl Client {
         let connection_timeout = connection_timeout.unwrap_or(CONNECTION_TIMEOUT);
 
         trace!("after timeout specfidied....");
-        
+
         let mut connection_timeout_interval = interval(connection_timeout);
         trace!("after interval....");
         // first tick completes immediately
