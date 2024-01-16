@@ -40,9 +40,9 @@ use sn_protocol::{
 use std::{
     collections::{hash_map::Entry, HashSet},
     fmt::{Debug, Formatter},
-    time::{Duration, Instant},
 };
 use tokio::sync::oneshot;
+use tokio::time::{Duration, Instant};
 use tracing::{info, warn};
 
 /// Our agent string has as a prefix that we can match against.
