@@ -22,7 +22,7 @@ use crate::{
     network_discovery::NetworkDiscovery,
     record_store::{ClientRecordStore, NodeRecordStore, NodeRecordStoreConfig},
     record_store_api::UnifiedRecordStore,
-    replication_fetcher::ReplicationFetcher,
+    replication_fetcher::{ReplicationFetcher, self},
     Network, CLOSE_GROUP_SIZE,
 };
 use futures::StreamExt;
@@ -571,15 +571,21 @@ impl NetworkBuilder {
         let swarm = Swarm::new(transport, behaviour, peer_id, swarm_config);
 
         debug!("cccccccccccccccc22222222222cc");
+        
+        let boostrap = ContinuousBootstrap::new();
+        debug!("continue");
+        let replication_fetcher =  ReplicationFetcher::new(peer_id);
+        debug!("repl");
+
         let swarm_driver = SwarmDriver {
             swarm,
             self_peer_id: peer_id,
             local: self.local,
             is_client,
             connected_peers: 0,
-            bootstrap: ContinuousBootstrap::new(),
+            bootstrap,
             close_group: Default::default(),
-            replication_fetcher: ReplicationFetcher::new(peer_id),
+            replication_fetcher,
             #[cfg(feature = "open-metrics")]
             network_metrics,
             cmd_receiver: swarm_cmd_receiver,
