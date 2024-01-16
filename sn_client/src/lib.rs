@@ -89,18 +89,28 @@ pub async fn get_data(peer: &str, data_address: &[u8]) -> std::result::Result<()
         "Provided Peer was {the_peer:?}"
     )));
 
-    let client = Client::quick_start(Some(vec![the_peer]))
-        .await
+    // Start a single threaded runtime to run the client
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
         .map_err(|e| JsError::new(&format!("Client could not start: {e:?}")))?;
 
-    console::log_1(&JsValue::from_str("Client started {chunk:?}"));
+    let outcome = rt.block_on( async {
 
-    let chunk = client
-        .get_chunk_by_xor(data_address)
-        .await
-        .map_err(|e| JsError::new(&format!("Client get data failed: {e:?}")))?;
+        let client = Client::quick_start(Some(vec![the_peer]))
+            .await
+            .map_err(|e| JsError::new(&format!("Client could not start: {e:?}")))?;
+    
+        console::log_1(&JsValue::from_str("Client started {chunk:?}"));
+    
+        let chunk = client
+            .get_chunk_by_xor(data_address)
+            .await
+            .map_err(|e| JsError::new(&format!("Client get data failed: {e:?}")))?;
+    
+        console::log_1(&JsValue::from_str(&format!("Data found {chunk:?}")));
+    });
 
-    console::log_1(&JsValue::from_str(&format!("Data found {chunk:?}")));
 
     Ok(())
 }

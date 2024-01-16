@@ -119,20 +119,24 @@ impl Client {
             swarm_driver.run()
         });
 
+
+        trace!("Started up client swarm_driver");
+        
         // spawn task to dial to the given peers
         let network_clone = network.clone();
         let _handle = spawn(async move {
             if let Some(peers) = peers {
                 for addr in peers {
                     trace!(%addr, "dialing initial peer");
-
+                    
                     if let Err(err) = network_clone.dial(addr.clone()).await {
                         tracing::error!(%addr, "Failed to dial: {err:?}");
                     };
                 }
             }
         });
-
+        
+        trace!("Started dialling....");
         // spawn task to wait for NetworkEvent and check for inactivity
         let mut client_clone = client.clone();
         let _event_handler = spawn(async move {
@@ -171,6 +175,10 @@ impl Client {
                 }
             }
         });
+
+
+        trace!("after dialling....");
+
 
         // loop to connect to the network
         let mut is_connected = false;
