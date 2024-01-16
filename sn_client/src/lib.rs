@@ -91,7 +91,8 @@ pub async fn get_data(peer: &str, data_address: &[u8]) -> std::result::Result<()
 
     // Start a single threaded runtime to run the client
     let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
+    
+        // .enable_all()
         .build()
         .map_err(|e| JsError::new(&format!("Client could not start: {e:?}")))?;
 
