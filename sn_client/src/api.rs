@@ -44,13 +44,13 @@ use std::{
     num::NonZeroUsize,
     path::PathBuf,
 };
+use tracing::trace;
 use tokio::task::spawn;
 #[cfg(not(target_arch = "wasm"))]
-use tokio::time::interval;
+use tokio::time::{interval, timeout};
 use tokio::time::Duration;
-use tracing::trace;
 #[cfg(target_arch = "wasm")]
-use wasmtimer::tokio::interval;
+use wasmtimer::tokio::{interval, timeout};
 use xor_name::XorName;
 
 /// The maximum duration the client will wait for a connection to the network before timing out.
@@ -144,7 +144,7 @@ impl Client {
         let mut client_clone = client.clone();
         let _event_handler = spawn(async move {
             loop {
-                match tokio::time::timeout(INACTIVITY_TIMEOUT, network_event_receiver.recv()).await
+                match timeout(INACTIVITY_TIMEOUT, network_event_receiver.recv()).await
                 {
                     Ok(event) => {
                         let the_event = match event {
