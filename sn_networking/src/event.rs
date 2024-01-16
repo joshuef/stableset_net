@@ -199,7 +199,7 @@ impl SwarmDriver {
         // called individually on each behaviour.
         #[cfg(feature = "open-metrics")]
         self.network_metrics.record(&event);
-        let start = std::time::Instant::now();
+        let start = tokio::time::Instant::now();
         let event_string;
         match event {
             SwarmEvent::Behaviour(NodeEvent::MsgReceived(event)) => {
@@ -718,7 +718,7 @@ impl SwarmDriver {
     fn handle_kad_event(&mut self, kad_event: kad::Event) -> Result<()> {
         #[cfg(feature = "open-metrics")]
         self.network_metrics.record(&kad_event);
-        let start = std::time::Instant::now();
+        let start = tokio::time::Instant::now();
         let event_string;
 
         match kad_event {

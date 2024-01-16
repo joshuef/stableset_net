@@ -144,7 +144,7 @@ impl Client {
         let mut txs_to_follow = BTreeSet::from_iter([first_spend.spend.spent_tx]);
         let mut verified_tx = BTreeSet::new();
         let mut gen = 0;
-        let start = std::time::Instant::now();
+        let start = tokio::time::Instant::now();
 
         while !txs_to_follow.is_empty() {
             let mut next_gen_tx = BTreeSet::new();

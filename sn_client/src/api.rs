@@ -147,7 +147,7 @@ impl Client {
                             }
                         };
 
-                        let start = std::time::Instant::now();
+                        let start = tokio::time::Instant::now();
                         let event_string = format!("{the_event:?}");
                         if let Err(err) = client_clone.handle_network_event(the_event) {
                             warn!("Error handling network event: {err}");

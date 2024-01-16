@@ -296,7 +296,7 @@ pub struct SwarmLocalState {
 
 impl SwarmDriver {
     pub(crate) fn handle_cmd(&mut self, cmd: SwarmCmd) -> Result<(), Error> {
-        let start = std::time::Instant::now();
+        let start = tokio::time::Instant::now();
         let mut cmd_string = "";
         match cmd {
             SwarmCmd::TriggerIntervalReplication => {

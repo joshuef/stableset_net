@@ -117,7 +117,7 @@ impl NodeRecordStore {
     }
 
     fn read_from_disk<'a>(key: &Key, storage_dir: &Path) -> Option<Cow<'a, Record>> {
-        let start = std::time::Instant::now();
+        let start = tokio::time::Instant::now();
         let filename = Self::key_to_hex(key);
         let file_path = storage_dir.join(&filename);
 

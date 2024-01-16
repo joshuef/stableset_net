@@ -7,8 +7,7 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 
 use crate::{driver::PendingGetClosestType, SwarmDriver};
-use std::time::{Duration, Instant};
-use tokio::time::Interval;
+use tokio::time::{Duration, Instant, Interval};
 
 /// The interval in which kad.bootstrap is called
 pub(crate) const BOOTSTRAP_INTERVAL: Duration = Duration::from_secs(5);
