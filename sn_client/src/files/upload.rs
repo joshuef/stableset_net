@@ -402,7 +402,6 @@ impl FilesUpload {
 
     /// Store chunks from chunk_paths (assuming payments have already been made and are in our local wallet).
     /// If verify_store is true, we will attempt to fetch the chunks from the network to verify it is stored.
-    #[cfg(not(target_arch = "wasm32"))] // wasm cant handle fs
     async fn upload_chunk(
         files_api: FilesApi,
         chunk_info: ChunkInfo,
