@@ -184,9 +184,14 @@ impl Client {
         // loop to connect to the network
         let mut is_connected = false;
         let connection_timeout = connection_timeout.unwrap_or(CONNECTION_TIMEOUT);
+
+        trace!("after timeout specfidied....");
+        
         let mut connection_timeout_interval = interval(connection_timeout);
+        trace!("after interval....");
         // first tick completes immediately
         connection_timeout_interval.tick().await;
+        trace!("after tick....");
 
         loop {
             tokio::select! {
@@ -220,6 +225,8 @@ impl Client {
                 }
             }}
         }
+
+        trace!("after all that....");
 
         // The above loop breaks if `ConnectedToNetwork` is received, but we might need the
         // receiver to still be active for us to not get any error if any other event is sent
