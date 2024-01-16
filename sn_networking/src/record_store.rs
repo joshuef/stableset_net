@@ -539,8 +539,9 @@ mod tests {
     };
     use quickcheck::*;
     use sn_protocol::storage::{try_serialize_record, ChunkAddress};
-    use std::{collections::BTreeMap, time::Duration};
+    use std::{collections::BTreeMap};
     use tokio::runtime::Runtime;
+    use tokio::time::Duration;
 
     const MULITHASH_CODE: u64 = 0x12;
 
