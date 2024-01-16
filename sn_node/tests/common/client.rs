@@ -16,9 +16,9 @@ use sn_transfers::{create_faucet_wallet, LocalWallet, NanoTokens, Transfer};
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::Path,
-    time::{Duration, Instant},
 };
 use tokio::sync::Mutex;
+use tokio::time::{Duration, Instant};
 use tracing::{error, info, warn};
 
 pub const PAYING_WALLET_INITIAL_BALANCE: u64 = 100_000_000_000_000;

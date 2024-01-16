@@ -68,6 +68,7 @@ wasm-bindgen-futures = "0.4.40"
 sn_peers_acquisition= { path="../sn_peers_acquisition", version = "0.2.0" }
 console_error_panic_hook = "0.1.6"
 tracing-wasm = "0.2.1"
+wasmtimer= "0.2.0"
 
 # The `web-sys` crate allows you to interact with the various browser APIs,
 # like the DOM.

@@ -21,8 +21,8 @@ use sn_transfers::{
 use std::{
     collections::{BTreeMap, BTreeSet},
     iter::Iterator,
-    time::{Duration, Instant},
 };
+use tokio::time::{Duration, Instant};
 use tokio::{task::JoinSet, time::sleep};
 use xor_name::XorName;
 

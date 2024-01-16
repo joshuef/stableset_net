@@ -42,9 +42,9 @@ use std::{
     collections::{HashMap, HashSet},
     num::NonZeroUsize,
     path::PathBuf,
-    time::Duration,
 };
 use tokio::task::spawn;
+use tokio::time::Duration;
 use tracing::trace;
 use xor_name::XorName;
 

@@ -16,8 +16,9 @@ use futures::StreamExt;
 use itertools::Itertools;
 use self_encryption::{decrypt_full_set, DataMap, EncryptedChunk, StreamSelfDecryptor};
 use sn_protocol::storage::{Chunk, ChunkAddress};
-use std::{collections::HashMap, fs, path::PathBuf, time::Instant};
+use std::{collections::HashMap, fs, path::PathBuf};
 use tokio::sync::mpsc::{self};
+use tokio::time::Instant;
 use xor_name::XorName;
 
 /// The events emitted from the download process.
