@@ -4795,6 +4795,7 @@ dependencies = [
  "tiny-keccak",
  "tokio",
  "tracing",
+ "wasmtimer",
  "xor_name",
 ]
 
