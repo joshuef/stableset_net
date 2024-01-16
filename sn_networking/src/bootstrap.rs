@@ -9,6 +9,12 @@
 use crate::{driver::PendingGetClosestType, SwarmDriver};
 use instant::Instant;
 use tokio::time::{Duration, Interval};
+#[cfg(not(target_arch="wasm"))]
+use tokio::time::interval;
+#[cfg(target_arch="wasm")]
+use wasmtimer::tokio::interval;
+
+
 /// The interval in which kad.bootstrap is called
 pub(crate) const BOOTSTRAP_INTERVAL: Duration = Duration::from_secs(5);
 
@@ -127,7 +133,7 @@ impl ContinuousBootstrap {
                 "It has been {LAST_PEER_ADDED_TIME_LIMIT:?} since we last added a peer to RT. Slowing down the continuous bootstrapping process"
             );
 
-            let mut new_interval = tokio::time::interval(NO_PEER_ADDED_SLOWDOWN_INTERVAL);
+            let mut new_interval = interval(NO_PEER_ADDED_SLOWDOWN_INTERVAL);
             new_interval.tick().await; // the first tick completes immediately
             return (should_bootstrap, Some(new_interval));
         }
@@ -138,7 +144,7 @@ impl ContinuousBootstrap {
         let new_interval = BOOTSTRAP_INTERVAL * step;
         let new_interval = if new_interval > current_interval {
             info!("More peers have been added to our RT!. Slowing down the continuous bootstrapping process");
-            let mut interval = tokio::time::interval(new_interval);
+            let mut interval = interval(new_interval);
             interval.tick().await; // the first tick completes immediately
             Some(interval)
         } else {

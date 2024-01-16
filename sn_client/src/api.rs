@@ -48,6 +48,11 @@ use tokio::task::spawn;
 use tokio::time::Duration;
 use tracing::trace;
 use xor_name::XorName;
+#[cfg(not(target_arch="wasm"))]
+use tokio::time::interval;
+#[cfg(target_arch="wasm")]
+use wasmtimer::tokio::interval;
+
 
 /// The maximum duration the client will wait for a connection to the network before timing out.
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
@@ -183,7 +188,7 @@ impl Client {
         // loop to connect to the network
         let mut is_connected = false;
         let connection_timeout = connection_timeout.unwrap_or(CONNECTION_TIMEOUT);
-        let mut connection_timeout_interval = tokio::time::interval(connection_timeout);
+        let mut connection_timeout_interval interval(connection_timeout);
         // first tick completes immediately
         connection_timeout_interval.tick().await;
 

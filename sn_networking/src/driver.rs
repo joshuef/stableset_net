@@ -63,6 +63,12 @@ use std::{
 use tiny_keccak::{Hasher, Sha3};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Duration;
+#[cfg(not(target_arch="wasm"))]
+use tokio::time::interval;
+#[cfg(target_arch="wasm")]
+use wasmtimer::tokio::interval;
+
+
 use tracing::warn;
 
 use instant::Instant;
@@ -669,7 +675,7 @@ impl SwarmDriver {
     /// and command receiver messages, ensuring efficient handling of multiple
     /// asynchronous tasks.
     pub async fn run(mut self) {
-        let mut bootstrap_interval = tokio::time::interval(BOOTSTRAP_INTERVAL);
+        let mut bootstrap_interval = interval(BOOTSTRAP_INTERVAL);
         loop {
             tokio::select! {
                 swarm_event = self.swarm.select_next_some() => {
