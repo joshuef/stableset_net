@@ -109,6 +109,9 @@ pub async fn get_data(peer: &str, data_address: &[u8]) -> std::result::Result<()
             .map_err(|e| JsError::new(&format!("Client get data failed: {e:?}")))?;
     
         console::log_1(&JsValue::from_str(&format!("Data found {chunk:?}")));
+
+        //specify return type
+        Ok::<_, JsError>(())
     });
 
 
