@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1707828344226,
+  "lastUpdate": 1707828345940,
   "repoUrl": "https://github.com/joshuef/safe_network",
   "entries": {
     "`safe files` benchmarks": [
@@ -4812,6 +4812,40 @@ window.BENCHMARK_DATA = {
           {
             "name": "Average memory usage w/ upload",
             "value": 250,
+            "unit": "MB"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "joshuef@gmail.com",
+            "name": "Josh Wilson",
+            "username": "joshuef"
+          },
+          "committer": {
+            "email": "joshuef@gmail.com",
+            "name": "joshuef",
+            "username": "joshuef"
+          },
+          "distinct": false,
+          "id": "3a5fc3d86dd1639e4e6278127876f4c58f59994c",
+          "message": "ci(faucet): enable distribution builds by default",
+          "timestamp": "2024-02-12T15:06:58Z",
+          "tree_id": "086b346ff77de5ce28c26fe7e513525e20a4d139",
+          "url": "https://github.com/joshuef/safe_network/commit/3a5fc3d86dd1639e4e6278127876f4c58f59994c"
+        },
+        "date": 1707828345205,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Peak memory usage w/ upload",
+            "value": 195,
+            "unit": "MB"
+          },
+          {
+            "name": "Average memory usage w/ upload",
+            "value": 85,
             "unit": "MB"
           }
         ]
