@@ -30,7 +30,15 @@ jobs:
         run: |
           echo ${{ env.BRANCH_NAME }}
           echo {{ env.BRANCH_NAME }}
-          sed -i "s/{{package}}/${{ env.BRANCH_NAME }}-{{package}}/g" release-plz.toml
+          sed "s/{{package}}/${{ env.BRANCH_NAME }}-{{package}}/g" .release-plz.toml.template > .release-plz.toml
+
+          cat release-plz.toml
+        shell: bash
+
+      - name: Write release-plz config for Main Branch
+        if: env.BRANCH_NAME == 'main'
+        run: |
+          cp .release-plz.toml.template .release-plz.toml
           cat release-plz.toml
         shell: bash
 

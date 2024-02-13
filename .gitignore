@@ -30,3 +30,6 @@ metrics/prometheus/prometheus.yml
 *.svg
 
 sn_node_manager/.vagrant
+
+# parsed release-plz config
+release-plz.toml
