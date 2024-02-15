@@ -265,16 +265,17 @@ pub(crate) async fn estimate_cost(path: PathBuf, client: &Client, root_dir: &Pat
 
     let mut estimate: u64 = 0;
 
-    for chunk in chunk_manager.get_chunks() {
-        estimate += FilesApi::new(client.clone(), root_dir.to_path_buf())
+    for (chunk_address, location) in chunk_manager.get_chunks() {
+        let (peer, cost, quote) = FilesApi::new(client.clone(), root_dir.to_path_buf())
             .wallet()?
             .get_store_cost_at_address(NetworkAddress::from_chunk_address(ChunkAddress::new(
-                chunk.0,
+                chunk_address,
             )))
-            .await?
-            .2
-            .cost
-            .as_nano();
+            .await?;
+
+        let cost = quote.cost.as_nano();
+
+        estimate += cost;
     }
     println!("Estimated cost in NanoTokens: {estimate} "); // TODO: balance after transfer.
     Ok(())
