@@ -19,10 +19,11 @@ fi
 
 commit_message="chore(release): "
 for crate in "${crates_bumped[@]}"; do
-  commit_message="${commit_message}${crate}/"
+    echo "$crate"
+  # commit_message="${commit_message}${crate}/"
 done
-commit_message=${commit_message%/} # strip off trailing '/' character
+# commit_message=${commit_message%/} # strip off trailing '/' character
 
-git add --all
-git commit -m "$commit_message"
-echo "Generated release commit: $commit_message"
+# git add --all
+# git commit -m "$commit_message"
+# echo "Generated release commit: $commit_message"
