@@ -19,7 +19,7 @@ fi
 
 commit_message="chore(release): "
 for crate in "${crates_bumped[@]}"; do
-    echo "$crate"
+    echo "-0--->>>> $crate"
   # commit_message="${commit_message}${crate}/"
 done
 # commit_message=${commit_message%/} # strip off trailing '/' character
