@@ -4,6 +4,14 @@ set -e
 
 release-plz update 2>&1 | tee bump_version_output
 
+# Suffix to append to the version. Passed as an argument to this script.
+SUFFIX="$1"
+
+# Ensure the suffix starts with a dash if it's provided and not empty
+if [ -n "$SUFFIX" ] && [[ "$SUFFIX" != -* ]]; then
+    SUFFIX="-$SUFFIX"
+fi
+
 crates_bumped=()
 while IFS= read -r line; do
   name=$(echo "$line" | awk -F"\`" '{print $2}')
@@ -19,7 +27,9 @@ fi
 
 commit_message="chore(release): "
 for crate in "${crates_bumped[@]}"; do
-    echo "-0--->>>> $crate"
+    local version=$(echo "$crate" | cut -d'v' -f2)
+    local new_version="$version$SUFFIX"
+    echo "-0--->>>> $crate new v is: $new_version"
   # commit_message="${commit_message}${crate}/"
 done
 # commit_message=${commit_message%/} # strip off trailing '/' character
