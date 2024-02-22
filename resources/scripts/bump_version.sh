@@ -27,8 +27,8 @@ fi
 
 commit_message="chore(release): "
 for crate in "${crates_bumped[@]}"; do
-    local version=$(echo "$crate" | cut -d'v' -f2)
-    local new_version="$version$SUFFIX"
+    version=$(echo "$crate" | cut -d'v' -f2)
+    new_version="$version$SUFFIX"
     echo "-0--->>>> $crate new v is: $new_version"
   # commit_message="${commit_message}${crate}/"
 done
