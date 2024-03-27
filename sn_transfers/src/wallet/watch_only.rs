@@ -337,6 +337,22 @@ impl WatchOnlyWallet {
         file.lock_exclusive()?;
         Ok(file)
     }
+
+    // Tries to locks the wallet and returns exclusive access to the wallet
+    // This lock prevents any other process from locking the wallet dir, effectively acts as a mutex for the wallet
+    // This does not wait to get the lock, choosing to bail instead
+    pub(super) fn try_lock(&self) -> Result<WalletExclusiveAccess> {
+        let lock = wallet_lockfile_name(&self.wallet_dir);
+        let file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(lock)?;
+
+        #[cfg(not(target_arch = "wasm32"))]
+        file.try_lock_exclusive()?;
+        Ok(file)
+    }
 }
 
 #[cfg(test)]

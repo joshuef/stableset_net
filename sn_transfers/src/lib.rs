@@ -32,8 +32,8 @@ pub use genesis::{
     Error as GenesisError, GENESIS_CASHNOTE, GENESIS_CASHNOTE_SK, NETWORK_ROYALTIES_PK,
 };
 pub use wallet::{
-    bls_secret_from_hex, Error as WalletError, HotWallet, Payment, PaymentQuote,
-    Result as WalletResult, WatchOnlyWallet, QUOTE_EXPIRATION_SECS,
+    bls_secret_from_hex, wallet_lockfile_name, Error as WalletError, HotWallet, Payment,
+    PaymentQuote, Result as WalletResult, WatchOnlyWallet, QUOTE_EXPIRATION_SECS, WALLET_DIR_NAME,
 };
 
 // re-export crates used in our public API

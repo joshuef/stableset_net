@@ -34,7 +34,7 @@ use std::{
     time::Instant,
 };
 
-const WALLET_DIR_NAME: &str = "wallet";
+pub const WALLET_DIR_NAME: &str = "wallet";
 
 /// A locked file handle, that when dropped releases the lock.
 pub type WalletExclusiveAccess = File;
@@ -74,6 +74,12 @@ impl HotWallet {
     /// This lock prevents any other process from locking the wallet dir, effectively acts as a mutex for the wallet
     pub fn lock(&self) -> Result<WalletExclusiveAccess> {
         self.watchonly_wallet.lock()
+    }
+
+    /// Tries to locks the wallet and returns exclusive access to the wallet
+    /// Bails if unable to lock the wallet
+    pub fn try_lock(&self) -> Result<WalletExclusiveAccess> {
+        self.watchonly_wallet.try_lock()
     }
 
     /// Stores the given cash_notes to the `created cash_notes dir` in the wallet dir.

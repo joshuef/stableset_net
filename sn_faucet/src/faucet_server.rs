@@ -11,7 +11,9 @@ use crate::token_distribution;
 use crate::{claim_genesis, send_tokens};
 use color_eyre::eyre::Result;
 use sn_client::Client;
-use sn_transfers::{get_faucet_data_dir, HotWallet, NanoTokens};
+use sn_transfers::{
+    get_faucet_data_dir, wallet_lockfile_name, HotWallet, NanoTokens, WALLET_DIR_NAME,
+};
 use std::collections::HashMap;
 use std::path::Path;
 use tracing::{debug, error};
@@ -81,6 +83,27 @@ async fn respond_to_gift_request(
     client: Client,
     key: String,
 ) -> std::result::Result<impl Reply, std::convert::Infallible> {
+    // some rate limiting
+    let root_dir = get_faucet_data_dir();
+    let wallet_dir = root_dir.join(WALLET_DIR_NAME);
+    let wallet_lockfile_name = wallet_lockfile_name(&wallet_dir);
+
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(wallet_lockfile_name)?;
+
+    match file.try_lock_exclusive() {
+        Ok(_) => {
+            // we can lock, so we can carry on with this reqeust
+        }
+        Err(error) => {
+            // we failed to lock. This means we are already processing a request
+            return Ok(Response::new("Rate limited".to_string()));
+        }
+    }
+
     const GIFT_AMOUNT_SNT: &str = "1";
     match send_tokens(&client, GIFT_AMOUNT_SNT, &key).await {
         Ok(transfer) => {
