@@ -57,16 +57,15 @@ impl Component for Home {
         if let Some(registry) = &self.node_registry {
             let nodes: Vec<_> =
                 registry.to_status_summary().nodes.iter().filter_map(|n| n.peer_id.map(|p| p.to_string())).collect();
-            let mut list = List::new(nodes);
-            // table.add_row(Row::new(vec![Cell::new("Name"), Cell::new("Version"), Cell::new("Status")]));
 
-            // for (name, node) in &nodes.nodes {
-            //     table.add_row(Row::new(vec![Cell::new(name), Cell::new(&node.version), Cell::new(&node.status)]));
-            // }
+            if !nodes.is_empty() {
+                let mut list = List::new(nodes);
 
-            f.render_widget(list, area);
+                f.render_widget(list, area);
+            }
+        } else {
+            f.render_widget(Paragraph::new("No nodes running"), area);
         }
-        f.render_widget(Paragraph::new("hello world"), area);
         Ok(())
     }
 }
