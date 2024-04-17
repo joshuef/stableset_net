@@ -4,7 +4,7 @@ use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{prelude::*, widgets::*};
 use serde::{Deserialize, Serialize};
-use sn_service_management::{get_local_node_registry_path, NodeRegistry};
+use sn_service_management::{get_local_node_registry_path, NodeRegistry, ServiceStatus};
 use tokio::sync::mpsc::UnboundedSender;
 
 use super::{Component, Frame};
@@ -48,6 +48,9 @@ impl Component for Home {
                     self.node_registry = None;
                 }
             },
+            Action::StartNode => {
+                let local_node_registry = NodeRegistry::load(&get_local_node_registry_path()?)?;
+            },
             _ => {},
         }
         Ok(None)
@@ -56,7 +59,18 @@ impl Component for Home {
     fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
         if let Some(registry) = &self.node_registry {
             let nodes: Vec<_> =
-                registry.to_status_summary().nodes.iter().filter_map(|n| n.peer_id.map(|p| p.to_string())).collect();
+                registry
+                    .to_status_summary()
+                    .nodes
+                    .iter()
+                    .filter_map(|n| {
+                        if let ServiceStatus::Running = n.status {
+                            n.peer_id.map(|p| p.to_string())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
 
             if !nodes.is_empty() {
                 let mut list = List::new(nodes);
@@ -64,7 +78,11 @@ impl Component for Home {
                 f.render_widget(list, area);
             }
         } else {
-            f.render_widget(Paragraph::new("No nodes running"), area);
+            f.render_widget(
+                Paragraph::new("No nodes running")
+                    .block(Block::default().title("Autonomi Node Runner").borders(Borders::ALL)),
+                area,
+            )
         }
         Ok(())
     }
