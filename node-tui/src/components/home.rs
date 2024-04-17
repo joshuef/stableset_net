@@ -74,8 +74,19 @@ impl Component for Home {
 
             if !nodes.is_empty() {
                 let mut list = List::new(nodes);
+                let home_layout =
+                    Layout::new(Direction::Horizontal, [Constraint::Min(5), Constraint::Min(0), Constraint::Length(1)])
+                        .split(area);
 
-                f.render_widget(list, area);
+                f.render_widget(
+                    Paragraph::new("TODO: All Node Stats")
+                        .block(Block::default().title("Autonomi Node Runner").borders(Borders::ALL)),
+                    home_layout[0],
+                );
+                f.render_widget(
+                    list.block(Block::default().title("Running nodes").borders(Borders::ALL)),
+                    home_layout[1],
+                );
             }
         } else {
             f.render_widget(
