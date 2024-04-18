@@ -1,5 +1,6 @@
 use color_eyre::eyre::Result;
 use ratatui::{prelude::*, widgets::*};
+use sn_peers_acquisition::PeersArgs;
 use sn_service_management::{get_local_node_registry_path, NodeRegistry, ServiceStatus};
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -11,11 +12,13 @@ pub struct Home {
     command_tx: Option<UnboundedSender<Action>>,
     config: Config,
     node_registry: Option<NodeRegistry>,
+    // Network Peers
+    pub peers_args: PeersArgs,
 }
 
 impl Home {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(peers_args: PeersArgs) -> Self {
+        Self { peers_args, ..Default::default() }
     }
 }
 

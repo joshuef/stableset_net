@@ -25,5 +25,5 @@ pub struct Cli {
     pub frame_rate: f64,
 
     #[command(flatten)]
-    peers: PeersArgs,
+    pub peers: PeersArgs,
 }

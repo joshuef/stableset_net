@@ -1,5 +1,4 @@
 /// initially generated from: https://github.com/ratatui-org/templates/blob/main/component/README.md
-///
 pub mod action;
 pub mod app;
 pub mod cli;
@@ -24,7 +23,7 @@ async fn tokio_main() -> Result<()> {
     initialize_panic_handler()?;
 
     let args = Cli::parse();
-    let mut app = App::new(args.tick_rate, args.frame_rate)?;
+    let mut app = App::new(args.tick_rate, args.frame_rate, args.peers)?;
     app.run().await?;
 
     Ok(())
