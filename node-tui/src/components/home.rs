@@ -57,6 +57,17 @@ impl Component for Home {
     }
 
     fn draw(&mut self, f: &mut Frame<'_>, area: Rect) -> Result<()> {
+        // basic home layout
+        let home_layout =
+            Layout::new(Direction::Vertical, [Constraint::Min(5), Constraint::Min(3), Constraint::Max(3)]).split(area);
+
+        // top section
+        f.render_widget(
+            Paragraph::new("TODO: All Node Stats")
+                .block(Block::default().title("Autonomi Node Runner").borders(Borders::ALL)),
+            home_layout[0],
+        );
+
         if let Some(registry) = &self.node_registry {
             let nodes: Vec<_> =
                 registry
@@ -74,15 +85,7 @@ impl Component for Home {
 
             if !nodes.is_empty() {
                 let mut list = List::new(nodes);
-                let home_layout =
-                    Layout::new(Direction::Horizontal, [Constraint::Min(5), Constraint::Min(0), Constraint::Length(1)])
-                        .split(area);
 
-                f.render_widget(
-                    Paragraph::new("TODO: All Node Stats")
-                        .block(Block::default().title("Autonomi Node Runner").borders(Borders::ALL)),
-                    home_layout[0],
-                );
                 f.render_widget(
                     list.block(Block::default().title("Running nodes").borders(Borders::ALL)),
                     home_layout[1],
@@ -92,9 +95,15 @@ impl Component for Home {
             f.render_widget(
                 Paragraph::new("No nodes running")
                     .block(Block::default().title("Autonomi Node Runner").borders(Borders::ALL)),
-                area,
+                home_layout[1],
             )
         }
+
+        f.render_widget(
+            Paragraph::new("[S]tart nodes, [Q]uit")
+                .block(Block::default().title(" Key commands ").borders(Borders::ALL)),
+            home_layout[2],
+        );
         Ok(())
     }
 }
