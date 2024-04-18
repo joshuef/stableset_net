@@ -39,7 +39,21 @@ impl Component for Home {
                 let local_node_registry = NodeRegistry::load(&get_local_node_registry_path()?)?;
                 let peers = self.peers_args.clone();
                 tokio::spawn(sn_node_manager::cmd::node::add(
-                    None, None, None, false, None, None, None, peers, None, None, None, None, None, None, None,
+                    None,
+                    None,
+                    None,
+                    false,
+                    None,
+                    None,
+                    None,
+                    peers,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    sn_node_manager::VerbosityLevel::Minimal,
                 ));
             },
             Action::Tick => {
