@@ -15,7 +15,7 @@ use color_eyre::eyre::Result;
 
 use crate::{
     app::App,
-    utils::{initialize_logging, initialize_panic_handler, version},
+    utils::{initialize_logging, initialize_panic_handler},
 };
 
 async fn tokio_main() -> Result<()> {

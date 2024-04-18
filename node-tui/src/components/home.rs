@@ -1,16 +1,16 @@
-use std::{collections::HashMap, time::Duration};
+
 
 use color_eyre::eyre::Result;
-use crossterm::event::{KeyCode, KeyEvent};
+
 use ratatui::{prelude::*, widgets::*};
-use serde::{Deserialize, Serialize};
+
 use sn_service_management::{get_local_node_registry_path, NodeRegistry, ServiceStatus};
 use tokio::sync::mpsc::UnboundedSender;
 
 use super::{Component, Frame};
 use crate::{
     action::Action,
-    config::{Config, KeyBindings},
+    config::{Config},
 };
 
 #[derive(Default)]
@@ -49,7 +49,7 @@ impl Component for Home {
                 }
             },
             Action::StartNode => {
-                let local_node_registry = NodeRegistry::load(&get_local_node_registry_path()?)?;
+                let _local_node_registry = NodeRegistry::load(&get_local_node_registry_path()?)?;
             },
             _ => {},
         }
@@ -84,7 +84,7 @@ impl Component for Home {
                     .collect();
 
             if !nodes.is_empty() {
-                let mut list = List::new(nodes);
+                let list = List::new(nodes);
 
                 f.render_widget(
                     list.block(Block::default().title("Running nodes").borders(Borders::ALL)),
