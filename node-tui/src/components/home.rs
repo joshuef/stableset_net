@@ -36,25 +36,36 @@ impl Component for Home {
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
             Action::StartNodes => {
-                let local_node_registry = NodeRegistry::load(&get_local_node_registry_path()?)?;
+                tracing::debug!("STARTING");
+                // let local_node_registry = NodeRegistry::load(&get_local_node_registry_path()?)?;
                 let peers = self.peers_args.clone();
-                tokio::spawn(sn_node_manager::cmd::node::add(
-                    None,
-                    None,
-                    None,
-                    false,
-                    None,
-                    None,
-                    None,
-                    peers,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    sn_node_manager::VerbosityLevel::Minimal,
-                ));
+                tokio::spawn(async {
+                    if let Err(err) = sn_node_manager::cmd::node::add(
+                        None,
+                        None,
+                        None,
+                        true,
+                        None,
+                        None,
+                        None,
+                        peers,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        sn_node_manager::VerbosityLevel::Minimal,
+                    )
+                    .await
+                    {
+                        tracing::error!("ERRROR adding {err:?}")
+                    }
+
+                    tracing::debug!("added servicionssss");
+
+                    sn_node_manager::cmd::node::start(1, vec![], vec![], sn_node_manager::VerbosityLevel::Minimal)
+                });
             },
             Action::Tick => {
                 let local_node_registry = NodeRegistry::load(&get_local_node_registry_path()?)?;

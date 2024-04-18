@@ -70,16 +70,19 @@ pub async fn add(
         config::get_service_log_dir_path(ReleaseType::Safenode, log_dir_path, &service_user)?;
 
     let mut node_registry = NodeRegistry::load(&config::get_node_registry_path()?)?;
-    // let release_repo = <dyn SafeReleaseRepoActions>::default_config();
+    let release_repo = <dyn SafeReleaseRepoActions>::default_config();
 
     let (safenode_src_path, version) = if let Some(path) = src_path {
         let version = get_bin_version(&path)?;
         (path, version)
     } else {
+        tracing::debug!("upsss");
         panic!("uppssssss");
-        // download_and_extract_release(ReleaseType::Safenode, url.clone(), version, &*release_repo)
-        //     .await?
+        download_and_extract_release(ReleaseType::Safenode, url.clone(), version, &*release_repo)
+            .await?
     };
+
+    tracing::debug!("peers questions...");
 
     // Handle the `PeersNotObtained` error to make the `--peer` argument optional for the node
     // manager.
@@ -121,6 +124,7 @@ pub async fn add(
     add_node(options, &mut node_registry, &service_manager, verbosity).await?;
 
     node_registry.save()?;
+    tracing::debug!("registery saved......");
 
     Ok(())
 }

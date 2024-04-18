@@ -14,7 +14,7 @@ use crate::{
     ServiceManager, VerbosityLevel,
 };
 use color_eyre::{eyre::eyre, Result};
-use sn_releases::ReleaseType;
+use sn_releases::{ReleaseType, SafeReleaseRepoActions};
 use sn_service_management::{
     control::{ServiceControl, ServiceController},
     DaemonService, NodeRegistry,
@@ -45,20 +45,19 @@ pub async fn add(
     service_manager.create_service_user(service_user)?;
 
     let mut node_registry = NodeRegistry::load(&config::get_node_registry_path()?)?;
-    // let release_repo = <dyn SafeReleaseRepoActions>::default_config();
+    let release_repo = <dyn SafeReleaseRepoActions>::default_config();
 
     let (daemon_src_bin_path, version) = if let Some(path) = src_path {
         let version = get_bin_version(&path)?;
         (path, version)
     } else {
-        panic!("ups commented code bit me");
-        // download_and_extract_release(
-        //     ReleaseType::SafenodeManagerDaemon,
-        //     url.clone(),
-        //     version,
-        //     &*release_repo,
-        // )
-        // .await?
+        download_and_extract_release(
+            ReleaseType::SafenodeManagerDaemon,
+            url.clone(),
+            version,
+            &*release_repo,
+        )
+        .await?
     };
 
     // At the moment we don't have the option to provide a user for running the service. Since
