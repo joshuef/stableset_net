@@ -1,17 +1,10 @@
-
-
 use color_eyre::eyre::Result;
-
 use ratatui::{prelude::*, widgets::*};
-
 use sn_service_management::{get_local_node_registry_path, NodeRegistry, ServiceStatus};
 use tokio::sync::mpsc::UnboundedSender;
 
 use super::{Component, Frame};
-use crate::{
-    action::Action,
-    config::{Config},
-};
+use crate::{action::Action, config::Config};
 
 #[derive(Default)]
 pub struct Home {
@@ -39,6 +32,14 @@ impl Component for Home {
 
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
+            Action::StartNodes => {
+                let local_node_registry = NodeRegistry::load(&get_local_node_registry_path()?)?;
+
+                let peers =
+                sn_node_manager::cmd::node::add(
+                    None, None, None, false, None, None, None, None, None, None, None, None, None, None, None,
+                )
+            },
             Action::Tick => {
                 let local_node_registry = NodeRegistry::load(&get_local_node_registry_path()?)?;
 
