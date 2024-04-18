@@ -35,10 +35,9 @@ impl Component for Home {
             Action::StartNodes => {
                 let local_node_registry = NodeRegistry::load(&get_local_node_registry_path()?)?;
 
-                let peers =
-                sn_node_manager::cmd::node::add(
-                    None, None, None, false, None, None, None, None, None, None, None, None, None, None, None,
-                )
+                // sn_node_manager::cmd::node::add_node_services(
+                //     None, None, None, false, None, None, None, None, None, None, None, None, None, None, None,
+                // )
             },
             Action::Tick => {
                 let local_node_registry = NodeRegistry::load(&get_local_node_registry_path()?)?;
