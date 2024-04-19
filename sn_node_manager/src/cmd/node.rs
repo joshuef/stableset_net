@@ -15,13 +15,14 @@ use crate::{
         config::{AddNodeServiceOptions, PortRange},
     },
     config,
-    helpers::{download_and_extract_release, get_bin_version},
+    helpers::{download_and_extract_release, download_and_extract_release_tui, get_bin_version},
     refresh_node_registry, status_report, ServiceManager, VerbosityLevel,
 };
 use color_eyre::{eyre::eyre, Help, Result};
 use colored::Colorize;
 use libp2p_identity::PeerId;
 use semver::Version;
+use serde::{Deserialize, Serialize};
 use sn_peers_acquisition::{get_peers_from_args, PeersArgs};
 use sn_releases::{ReleaseType, SafeReleaseRepoActions};
 use sn_service_management::{
@@ -32,6 +33,15 @@ use sn_service_management::{
 };
 use sn_transfers::HotWallet;
 use std::{io::Write, net::Ipv4Addr, path::PathBuf, str::FromStr};
+use tokio::sync::mpsc::Sender;
+
+/// Progress to be reported by the manager
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
+pub enum ProgressType {
+    InfoMessage(String),
+    ErrorMessage(String),
+    Finished,
+}
 
 pub async fn add(
     count: Option<u16>,
@@ -49,6 +59,7 @@ pub async fn add(
     user: Option<String>,
     version: Option<String>,
     verbosity: VerbosityLevel,
+    progress_reporting: Sender<ProgressType>,
 ) -> Result<()> {
     if !is_running_as_root() {
         return Err(eyre!("The add command must run as the root user"));
@@ -59,6 +70,17 @@ pub async fn add(
         println!("              Add Safenode Services              ");
         println!("=================================================");
         println!("{} service(s) to be added", count.unwrap_or(1));
+    }
+
+    if let Err(error) = progress_reporting
+        .send(ProgressType::InfoMessage(format!(
+            "{} service(s) to be added",
+            count.unwrap_or(1)
+        )))
+        .await
+    {
+        eprintln!("{error:?}");
+        tracing::error!("Error updating add service progress plan: {error:?}");
     }
 
     let service_user = user.unwrap_or_else(|| "safe".to_string());
@@ -76,13 +98,32 @@ pub async fn add(
         let version = get_bin_version(&path)?;
         (path, version)
     } else {
-        tracing::debug!("upsss");
-        panic!("uppssssss");
-        download_and_extract_release(ReleaseType::Safenode, url.clone(), version, &*release_repo)
-            .await?
+        if let Err(error) = progress_reporting
+            .send(ProgressType::InfoMessage(
+                "Downloading the latest node binary".to_string(),
+            ))
+            .await
+        {
+            tracing::error!("Error updating add service download progress {error:?}");
+        }
+        download_and_extract_release_tui(
+            ReleaseType::Safenode,
+            url.clone(),
+            version,
+            &*release_repo,
+        )
+        .await?
     };
 
-    tracing::debug!("peers questions...");
+    if let Err(error) = progress_reporting
+        .send(ProgressType::InfoMessage(
+            "Downloaded latest node...".to_string(),
+        ))
+        .await
+    {
+        eprintln!("{error:?}");
+        tracing::error!("Error updating add service progress plan: {error:?}");
+    }
 
     // Handle the `PeersNotObtained` error to make the `--peer` argument optional for the node
     // manager.
@@ -124,7 +165,20 @@ pub async fn add(
     add_node(options, &mut node_registry, &service_manager, verbosity).await?;
 
     node_registry.save()?;
-    tracing::debug!("registery saved......");
+
+    if let Err(error) = progress_reporting
+        .send(ProgressType::InfoMessage(
+            "Node service has been added.".to_string(),
+        ))
+        .await
+    {
+        tracing::error!("Error updating add service progress {error:?}");
+    }
+
+    if let Err(error) = progress_reporting.send(ProgressType::Finished).await {
+        eprintln!("{error:?}");
+        tracing::error!("Error updating add service progress plan: {error:?}");
+    }
 
     Ok(())
 }
@@ -253,7 +307,7 @@ pub async fn start(
     }
 
     let mut node_registry = NodeRegistry::load(&config::get_node_registry_path()?)?;
-    refresh_node_registry(&mut node_registry, &ServiceController {}, true).await?;
+    refresh_node_registry(&mut node_registry, &ServiceController {}, false).await?;
 
     let service_indices = get_services_for_ops(&node_registry, peer_ids, service_names)?;
     if service_indices.is_empty() {

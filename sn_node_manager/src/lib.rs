@@ -89,7 +89,7 @@ impl<T: ServiceStateActions + Send> ServiceManager<T> {
         // At this point the service either hasn't been started for the first time or it has been
         // stopped. If it was stopped, it was either intentional or because it crashed.
         if self.verbosity != VerbosityLevel::Minimal {
-            println!("Attempting to start {}...", self.service.name());
+            tracing::info!("Attempting to start {}...", self.service.name());
         }
         self.service_control.start(&self.service.name())?;
         self.service_control.wait(RPC_START_UP_DELAY_MS);
@@ -121,7 +121,7 @@ impl<T: ServiceStateActions + Send> ServiceManager<T> {
 
         self.service.on_start().await?;
 
-        println!("{} Started {} service", "✓".green(), self.service.name());
+        tracing::info!("{} Started {} service", "✓".green(), self.service.name());
         if self.verbosity != VerbosityLevel::Minimal {
             println!(
                 "  - PID: {}",

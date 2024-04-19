@@ -10,7 +10,7 @@ use super::is_running_as_root;
 use crate::{
     add_services::{add_daemon, config::AddDaemonServiceOptions},
     config,
-    helpers::{download_and_extract_release, get_bin_version},
+    helpers::{download_and_extract_release, download_and_extract_release_tui, get_bin_version},
     ServiceManager, VerbosityLevel,
 };
 use color_eyre::{eyre::eyre, Result};
@@ -51,13 +51,23 @@ pub async fn add(
         let version = get_bin_version(&path)?;
         (path, version)
     } else {
-        download_and_extract_release(
-            ReleaseType::SafenodeManagerDaemon,
-            url.clone(),
-            version,
-            &*release_repo,
-        )
-        .await?
+        if verbosity != VerbosityLevel::Minimal {
+            download_and_extract_release(
+                ReleaseType::SafenodeManagerDaemon,
+                url.clone(),
+                version,
+                &*release_repo,
+            )
+            .await?
+        } else {
+            download_and_extract_release_tui(
+                ReleaseType::SafenodeManagerDaemon,
+                url.clone(),
+                version,
+                &*release_repo,
+            )
+            .await?
+        }
     };
 
     // At the moment we don't have the option to provide a user for running the service. Since

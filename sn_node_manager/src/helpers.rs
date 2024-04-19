@@ -27,6 +27,78 @@ const MAX_DOWNLOAD_RETRIES: u8 = 3;
 /// If the URL is supplied, that will be downloaded and extracted, and the binary inside the
 /// archive will be used; if the version is supplied, a specific version will be downloaded and
 /// used; otherwise the latest version will be downloaded and used.
+///
+/// This does not print to stdout, so the caller should handle any output.
+pub async fn download_and_extract_release_tui(
+    release_type: ReleaseType,
+    url: Option<String>,
+    version: Option<String>,
+    release_repo: &dyn SafeReleaseRepoActions,
+) -> Result<(PathBuf, String)> {
+    let callback: Box<dyn Fn(u64, u64) + Send + Sync> = Box::new(move |downloaded, total| {
+        tracing::debug!("Downloaded {} of {} bytes", downloaded, total);
+    });
+
+    let temp_dir_path = create_temp_dir()?;
+
+    let mut download_attempts = 1;
+    let archive_path = loop {
+        if download_attempts > MAX_DOWNLOAD_RETRIES {
+            bail!("Failed to download release after {MAX_DOWNLOAD_RETRIES} tries.");
+        }
+
+        if let Some(url) = &url {
+            match release_repo
+                .download_release(url, &temp_dir_path, &callback)
+                .await
+            {
+                Ok(archive_path) => break archive_path,
+                Err(err) => {
+                    download_attempts += 1;
+                }
+            }
+        } else {
+            let version = if let Some(version) = version.clone() {
+                Version::parse(&version)?
+            } else {
+                release_repo.get_latest_version(&release_type).await?
+            };
+
+            match release_repo
+                .download_release_from_s3(
+                    &release_type,
+                    &version,
+                    &get_running_platform()?,
+                    &ArchiveType::TarGz,
+                    &temp_dir_path,
+                    &callback,
+                )
+                .await
+            {
+                Ok(archive_path) => break archive_path,
+                Err(_err) => {
+                    download_attempts += 1;
+                }
+            }
+        };
+    };
+
+    let safenode_download_path =
+        release_repo.extract_release_archive(&archive_path, &temp_dir_path)?;
+
+    // Finally, obtain the version number from the binary by running `--version`. This is useful
+    // when the `--url` argument is used, and in any case, ultimately the binary we obtained is the
+    // source of truth.
+    let bin_version = get_bin_version(&safenode_download_path)?;
+
+    Ok((safenode_download_path, bin_version))
+}
+
+/// Downloads and extracts a release binary to a temporary location.
+///
+/// If the URL is supplied, that will be downloaded and extracted, and the binary inside the
+/// archive will be used; if the version is supplied, a specific version will be downloaded and
+/// used; otherwise the latest version will be downloaded and used.
 pub async fn download_and_extract_release(
     release_type: ReleaseType,
     url: Option<String>,

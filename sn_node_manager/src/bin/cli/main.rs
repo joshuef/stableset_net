@@ -10,10 +10,12 @@ use clap::{Parser, Subcommand};
 use color_eyre::{eyre::eyre, Result};
 use sn_node_manager::{
     add_services::config::{parse_port_range, PortRange},
-    cmd, VerbosityLevel,
+    cmd::{self, node::ProgressType},
+    VerbosityLevel,
 };
 use sn_peers_acquisition::PeersArgs;
 use std::{net::Ipv4Addr, path::PathBuf};
+use tokio::sync::mpsc;
 
 const DEFAULT_NODE_COUNT: u16 = 25;
 
@@ -593,6 +595,7 @@ async fn main() -> Result<()> {
     color_eyre::install()?;
     let args = Cmd::parse();
     let verbosity = VerbosityLevel::from(args.verbose);
+    // report progress via forwarding messages as actions
 
     match args.cmd {
         SubCmd::Add {
@@ -611,6 +614,8 @@ async fn main() -> Result<()> {
             user,
             version,
         } => {
+            let (progress_sender, progress_receiver) = mpsc::channel::<ProgressType>(1);
+
             cmd::node::add(
                 count,
                 data_dir_path,
@@ -627,6 +632,7 @@ async fn main() -> Result<()> {
                 user,
                 version,
                 verbosity,
+                progress_sender,
             )
             .await
         }
