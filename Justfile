@@ -204,9 +204,9 @@ package-release-assets bin version="":
       crate_dir_name="sn_node_rpc_client"
       ;;
     node-launchpad)
-      crate_dir_name="node_launchpad"
+      crate_dir_name="node-launchpad"
       ;;
-   
+
     *)
       echo "The $bin binary is not supported"
       exit 1
