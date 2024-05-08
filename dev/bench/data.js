@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1715131054408,
+  "lastUpdate": 1715132156871,
   "repoUrl": "https://github.com/joshuef/safe_network",
   "entries": {
     "`safe files` benchmarks": [
@@ -2140,6 +2140,45 @@ window.BENCHMARK_DATA = {
           {
             "name": "safe files download",
             "value": 57.68576753815828,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "chriso83@protonmail.com",
+            "name": "Chris O'Neil",
+            "username": "jacderida"
+          },
+          "committer": {
+            "email": "joshuef@gmail.com",
+            "name": "joshuef",
+            "username": "joshuef"
+          },
+          "distinct": false,
+          "id": "300b549d756158ab93604093aca8ae4d40835eb5",
+          "message": "ci: fix packaging for node launchpad\n\nThe \"node_launchpad\" crate name was changed to \"node-launchpad\", and there was a small syntax error\nin the Bash script which meant the switch statement was not terminated correctly.",
+          "timestamp": "2024-05-08T10:04:11+09:00",
+          "tree_id": "9b38117b7f02bae599f16a48ded69e5e2e860812",
+          "url": "https://github.com/joshuef/safe_network/commit/300b549d756158ab93604093aca8ae4d40835eb5"
+        },
+        "date": 1715132155884,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "safe files upload 1mb",
+            "value": 1.2454680868601014,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "safe files upload 10mb",
+            "value": 1.6500862919329842,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "safe files download",
+            "value": 57.345586984363,
             "unit": "MiB/s"
           }
         ]
