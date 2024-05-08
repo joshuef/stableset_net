@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1715131051804,
+  "lastUpdate": 1715131052963,
   "repoUrl": "https://github.com/joshuef/safe_network",
   "entries": {
     "`safe files` benchmarks": [
@@ -4914,6 +4914,40 @@ window.BENCHMARK_DATA = {
           {
             "name": "Average memory usage w/ upload",
             "value": 85,
+            "unit": "MB"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "qi.ma@maidsafe.net",
+            "name": "qima",
+            "username": "maqi"
+          },
+          "committer": {
+            "email": "RolandSherwin@protonmail.com",
+            "name": "RolandSherwin",
+            "username": "RolandSherwin"
+          },
+          "distinct": false,
+          "id": "a75502f1f8dcb5e6f3fd9dd3569ce53875cab3f2",
+          "message": "chore(CI): upload bootstrap_node log",
+          "timestamp": "2024-05-07T12:27:24Z",
+          "tree_id": "bd1e3efbec21e48b6a921ebd62f053046fd75a53",
+          "url": "https://github.com/joshuef/safe_network/commit/a75502f1f8dcb5e6f3fd9dd3569ce53875cab3f2"
+        },
+        "date": 1715131052671,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Peak memory usage w/ upload",
+            "value": 174,
+            "unit": "MB"
+          },
+          {
+            "name": "Average memory usage w/ upload",
+            "value": 84,
             "unit": "MB"
           }
         ]
