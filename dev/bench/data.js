@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1715130937842,
+  "lastUpdate": 1715131051804,
   "repoUrl": "https://github.com/joshuef/safe_network",
   "entries": {
     "`safe files` benchmarks": [
@@ -3795,6 +3795,35 @@ window.BENCHMARK_DATA = {
           {
             "name": "Peak memory w/ `safe` benchmarks",
             "value": 51,
+            "unit": "MB"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "qi.ma@maidsafe.net",
+            "name": "qima",
+            "username": "maqi"
+          },
+          "committer": {
+            "email": "RolandSherwin@protonmail.com",
+            "name": "RolandSherwin",
+            "username": "RolandSherwin"
+          },
+          "distinct": false,
+          "id": "a75502f1f8dcb5e6f3fd9dd3569ce53875cab3f2",
+          "message": "chore(CI): upload bootstrap_node log",
+          "timestamp": "2024-05-07T12:27:24Z",
+          "tree_id": "bd1e3efbec21e48b6a921ebd62f053046fd75a53",
+          "url": "https://github.com/joshuef/safe_network/commit/a75502f1f8dcb5e6f3fd9dd3569ce53875cab3f2"
+        },
+        "date": 1715131051403,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Peak memory w/ `safe` benchmarks",
+            "value": 65,
             "unit": "MB"
           }
         ]
