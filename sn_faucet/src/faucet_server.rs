@@ -11,8 +11,14 @@ use crate::claim_genesis;
 use crate::send_tokens;
 #[cfg(feature = "distribution")]
 use crate::token_distribution;
+#[cfg(feature = "initial-data")]
+use color_eyre::eyre;
 use color_eyre::eyre::Result;
 use fs2::FileExt;
+#[cfg(feature = "initial-data")]
+use reqwest;
+#[cfg(feature = "initial-data")]
+use sn_client::WalletClient;
 use sn_client::{
     acc_packet::load_account_wallet_or_create_with_mnemonic, fund_faucet_from_genesis_wallet,
     Client,
@@ -20,9 +26,14 @@ use sn_client::{
 use sn_transfers::{
     get_faucet_data_dir, wallet_lockfile_name, NanoTokens, Transfer, WALLET_DIR_NAME,
 };
+
+#[cfg(feature = "initial-data")]
+use sn_transfers::HotWallet;
 use std::path::Path;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Semaphore;
+#[cfg(feature = "initial-data")]
+use tokio::{fs, io::AsyncWriteExt};
 use tracing::{debug, error, info, warn};
 use warp::{
     http::{Response, StatusCode},
@@ -56,7 +67,65 @@ pub async fn run_faucet_server(client: &Client) -> Result<()> {
         error!("Faucet Server couldn't start as we failed to claim Genesis");
         err
     })?;
+    #[cfg(feature = "initial-data")]
+    {
+        // reload wallet for uploading
+        let wallet = load_account_wallet_or_create_with_mnemonic(&root_dir, None)?;
+        upload_initial_data(client.clone(), wallet).await?;
+    }
+
     startup_server(client.clone()).await
+}
+
+#[cfg(feature = "initial-data")]
+/// Trigger one by one uploading of intitial data packets to the entwork.
+async fn upload_initial_data(client: Client, wallet: HotWallet) -> Result<()> {
+    let wallet_client = WalletClient::new(client, wallet);
+
+    let urls = vec![
+        "https://releases.ubuntu.com/23.04/ubuntu-23.04-desktop-amd64.iso",
+        "https://releases.ubuntu.com/23.04/ubuntu-23.04-live-server-amd64.iso",
+        "https://releases.ubuntu.com/22.04.3/ubuntu-22.04.3-desktop-amd64.iso",
+        "https://releases.ubuntu.com/22.04.3/ubuntu-22.04.3-live-server-amd64.iso",
+        "https://releases.ubuntu.com/20.04.6/ubuntu-20.04.6-desktop-amd64.iso",
+    ];
+
+    let temp_dir = std::env::temp_dir();
+    let mut download_tasks = Vec::new();
+
+    for url in urls {
+        let temp_dir = temp_dir.clone();
+        let task = tokio::spawn(async move {
+            info!("Starting download for URL: {}", url);
+            info!("Downloading to {temp_dir:?}");
+            let response = reqwest::get(url).await?;
+            let mut dest = {
+                let fname = response
+                    .url()
+                    .path_segments()
+                    .and_then(std::iter::Iterator::last)
+                    .unwrap_or("tempfile");
+                let fname = temp_dir.join(fname);
+                fs::File::create(fname).await?
+            };
+            let content = response.bytes().await?;
+            dest.write_all(&content).await?;
+            info!("Download completed and saved to {:?}", dest);
+            Ok::<_, eyre::Report>(())
+        });
+        download_tasks.push(task);
+    }
+
+    let results = futures::future::join_all(download_tasks).await;
+    results.into_iter().for_each(|res| match res {
+        Ok(Ok(())) => info!("Download completed successfully"),
+        Ok(Err(e)) => error!("Error downloading file: {}", e),
+        Err(e) => error!("Task panicked: {}", e),
+    });
+    // TODO: move files uploader from cli (filesuploader)-> client
+    // Then use that for uploading each of these files to the network, one by one.
+
+    Ok(())
 }
 
 pub async fn restart_faucet_server(client: &Client) -> Result<()> {
