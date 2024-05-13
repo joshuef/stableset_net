@@ -11,7 +11,7 @@ mod change_tracking;
 use change_tracking::*;
 
 use super::{
-    files::{download_file, FilesUploader},
+    files::{download_files::download_file, FilesUploader},
     ChunkManager,
 };
 

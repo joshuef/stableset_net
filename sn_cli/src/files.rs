@@ -7,13 +7,12 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 
 mod chunk_manager;
-mod download;
+pub mod download_files;
 mod estimate;
 mod files_uploader;
 mod upload;
 
 pub use chunk_manager::ChunkManager;
-pub use download::{download_file, download_files};
 pub use estimate::Estimator;
 pub use files_uploader::{FilesUploadStatusNotifier, FilesUploadSummary, FilesUploader};
 pub use upload::{UploadedFile, UPLOADED_FILES};

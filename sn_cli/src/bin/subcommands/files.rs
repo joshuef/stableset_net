@@ -7,8 +7,8 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 
 use autonomi::{
-    download_file, download_files, ChunkManager, Estimator, FilesUploader, UploadedFile,
-    UPLOADED_FILES,
+    download_files::{download_file, download_files},
+    ChunkManager, Estimator, FilesUploader, UploadedFile, UPLOADED_FILES,
 };
 use clap::Parser;
 use color_eyre::{
