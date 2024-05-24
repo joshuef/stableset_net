@@ -60,7 +60,7 @@ kill-testbed:
   droplet_id=$(doctl compute droplet list \
     --format Name,ID --no-header | grep "^$DROPLET_NAME " | awk '{ print $2 }')
 
-  if [ -z "$droplet_ip" ]; then
+  if [ -z "$droplet_id" ]; then
     echo "Deleting droplet with ID $droplet_id"
     doctl compute droplet delete $droplet_id
   fi
@@ -374,7 +374,8 @@ upload-release-assets-to-s3 bin_name:
 
   cd deploy/{{bin_name}}
   for file in *.zip *.tar.gz; do
-    aws s3 cp "$file" "s3://$bucket/$file" --acl public-read done
+    aws s3 cp "$file" "s3://$bucket/$file" --acl public-read
+  done
 
 node-man-integration-tests:
   #!/usr/bin/env bash
