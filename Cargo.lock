@@ -2969,6 +2969,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "gutenberger"
+version = "0.1.0"
+dependencies = [
+ "eyre",
+ "reqwest 0.12.4",
+ "serde",
+ "serde_json",
+ "sn_client",
+ "tokio",
+]
+
+[[package]]
 name = "h2"
 version = "0.3.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,0 +1,25 @@
+[package]
+authors = ["MaidSafe Developers <dev@maidsafe.net>"]
+description = "Gutenberg Book Uploader"
+documentation = "https://docs.rs/guteberger"
+edition = "2021"
+homepage = "https://maidsafe.net"
+license = "GPL-3.0"
+name = "gutenberger"
+readme = "README.md"
+repository = "https://github.com/maidsafe"
+version = "0.1.0"
+
+[dependencies]
+eyre = "0.6"
+reqwest = { version = "0.12", default-features = false, features = [
+    "rustls-tls",
+    "json",
+] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sn_client = { path = "../sn_client", version = "0.106.3" }
+tokio = { version = "1" }
+
+[lints]
+workspace = true
