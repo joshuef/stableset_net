@@ -8,9 +8,10 @@
 
 use crate::{node::Node, quote::verify_quote_for_storecost, Error, Marker, Result};
 use libp2p::kad::{Record, RecordKey};
-use sn_networking::{get_raw_signed_spends_from_record, GetRecordError, NetworkError};
+use sn_networking::{
+    get_raw_signed_spends_from_record, GetRecordError, NetworkError, MAX_PACKET_SIZE,
+};
 use sn_protocol::{
-    messages::CmdOk,
     storage::{
         try_deserialize_record, try_serialize_record, Chunk, RecordHeader, RecordKind, RecordType,
         SpendAddress,
@@ -26,15 +27,21 @@ use std::collections::BTreeSet;
 use tokio::task::JoinSet;
 use xor_name::XorName;
 
+/// The maximum number of double spend attempts to store that we got from PUTs
+const MAX_DOUBLE_SPEND_ATTEMPTS_TO_KEEP_FROM_PUTS: usize = 15;
+
+/// The maximum number of double spend attempts to store inside a record
+const MAX_DOUBLE_SPEND_ATTEMPTS_TO_KEEP_PER_RECORD: usize = 30;
+
 impl Node {
     /// Validate a record and it's payment, and store the record to the RecordStore
-    pub(crate) async fn validate_and_store_record(&self, record: Record) -> Result<CmdOk> {
+    pub(crate) async fn validate_and_store_record(&self, record: Record) -> Result<()> {
         let record_header = RecordHeader::from_record(&record)?;
 
         // Notify replication_fetcher to mark the attempt as completed.
         // Send the notification earlier to avoid it got skipped due to:
         // the record becomes stored during the fetch because of other interleaved process.
-        self.network.notify_fetch_completed(record.key.clone());
+        self.network().notify_fetch_completed(record.key.clone());
 
         match record_header.kind {
             RecordKind::ChunkWithPayment => {
@@ -57,7 +64,11 @@ impl Node {
                     // we eagery retry replicaiton as it seems like other nodes are having trouble
                     // did not manage to get this chunk as yet
                     self.replicate_valid_fresh_record(record_key, RecordType::Chunk);
-                    return Ok(CmdOk::DataAlreadyPresent);
+                    trace!(
+                        "Chunk with addr {:?} already exists: {already_exists}, payment extracted.",
+                        chunk.network_address()
+                    );
+                    return Ok(());
                 }
 
                 // Finally before we store, lets bail for any payment issues
@@ -86,7 +97,9 @@ impl Node {
                 let record_key = record.key.clone();
                 let value_to_hash = record.value.clone();
                 let spends = try_deserialize_record::<Vec<SignedSpend>>(&record)?;
-                let result = self.validate_and_store_spends(spends, &record_key).await;
+                let result = self
+                    .validate_merge_and_store_spends(spends, &record_key, true)
+                    .await;
                 if result.is_ok() {
                     Marker::ValidSpendPutFromClient(&PrettyPrintRecordKey::from(&record_key)).log();
                     let content_hash = XorName::from_content(&value_to_hash);
@@ -162,8 +175,8 @@ impl Node {
     }
 
     /// Store a pre-validated, and already paid record to the RecordStore
-    pub(crate) async fn store_prepaid_record(&self, record: Record) -> Result<CmdOk> {
-        trace!("Storing prepaid record {:?}", record.key);
+    pub(crate) async fn store_replicated_in_record(&self, record: Record) -> Result<()> {
+        trace!("Storing record which was replicated to us {:?}", record.key);
         let record_header = RecordHeader::from_record(&record)?;
         match record_header.kind {
             // A separate flow handles payment for chunks and registers
@@ -180,12 +193,12 @@ impl Node {
                 let already_exists = self
                     .validate_key_and_existence(&chunk.network_address(), &record_key)
                     .await?;
-                trace!(
-                    "Chunk with addr {:?} already exists?: {already_exists}",
-                    chunk.network_address()
-                );
                 if already_exists {
-                    return Ok(CmdOk::DataAlreadyPresent);
+                    trace!(
+                        "Chunk with addr {:?} already exists?: {already_exists}, do nothing",
+                        chunk.network_address()
+                    );
+                    return Ok(());
                 }
 
                 self.store_chunk(&chunk)
@@ -193,7 +206,8 @@ impl Node {
             RecordKind::Spend => {
                 let record_key = record.key.clone();
                 let spends = try_deserialize_record::<Vec<SignedSpend>>(&record)?;
-                self.validate_and_store_spends(spends, &record_key).await
+                self.validate_merge_and_store_spends(spends, &record_key, false)
+                    .await
             }
             RecordKind::Register => {
                 let register = try_deserialize_record::<SignedRegister>(&record)?;
@@ -233,7 +247,7 @@ impl Node {
         }
 
         let present_locally = self
-            .network
+            .network()
             .is_record_key_present_locally(&data_key)
             .await?;
 
@@ -250,7 +264,7 @@ impl Node {
     }
 
     /// Store a `Chunk` to the RecordStore
-    pub(crate) fn store_chunk(&self, chunk: &Chunk) -> Result<CmdOk> {
+    pub(crate) fn store_chunk(&self, chunk: &Chunk) -> Result<()> {
         let chunk_name = *chunk.name();
         let chunk_addr = *chunk.address();
 
@@ -266,14 +280,14 @@ impl Node {
 
         // finally store the Record directly into the local storage
         trace!("Storing chunk {chunk_name:?} as Record locally");
-        self.network.put_local_record(record);
+        self.network().put_local_record(record);
 
         self.record_metrics(Marker::ValidChunkRecordPutFromNetwork(&pretty_key));
 
-        self.events_channel
+        self.events_channel()
             .broadcast(crate::NodeEvent::ChunkStored(chunk_addr));
 
-        Ok(CmdOk::StoredSuccessfully)
+        Ok(())
     }
 
     /// Validate and store a `Register` to the RecordStore
@@ -281,13 +295,13 @@ impl Node {
         &self,
         register: SignedRegister,
         with_payment: bool,
-    ) -> Result<CmdOk> {
+    ) -> Result<()> {
         let reg_addr = register.address();
         debug!("Validating and storing register {reg_addr:?}");
 
         // check if the Register is present locally
         let key = NetworkAddress::from_register_address(*reg_addr).to_record_key();
-        let present_locally = self.network.is_record_key_present_locally(&key).await?;
+        let present_locally = self.network().is_record_key_present_locally(&key).await?;
         let pretty_key = PrettyPrintRecordKey::from(&key);
 
         // check register and merge if needed
@@ -295,8 +309,8 @@ impl Node {
             Some(reg) => reg,
             None => {
                 // Notify replication_fetcher to mark the attempt as completed.
-                self.network.notify_fetch_completed(key.clone());
-                return Ok(CmdOk::DataAlreadyPresent);
+                self.network().notify_fetch_completed(key.clone());
+                return Ok(());
             }
         };
 
@@ -310,7 +324,7 @@ impl Node {
         let content_hash = XorName::from_content(&record.value);
 
         debug!("Storing register {reg_addr:?} as Record locally");
-        self.network.put_local_record(record);
+        self.network().put_local_record(record);
 
         self.record_metrics(Marker::ValidRegisterRecordPutFromNetwork(&pretty_key));
 
@@ -318,15 +332,17 @@ impl Node {
             self.replicate_valid_fresh_record(key, RecordType::NonChunk(content_hash));
         }
 
-        Ok(CmdOk::StoredSuccessfully)
+        Ok(())
     }
 
     /// Validate and store `Vec<SignedSpend>` to the RecordStore
-    pub(crate) async fn validate_and_store_spends(
+    /// If we already have a spend at this address, the Vec is extended and stored.
+    pub(crate) async fn validate_merge_and_store_spends(
         &self,
         signed_spends: Vec<SignedSpend>,
         record_key: &RecordKey,
-    ) -> Result<CmdOk> {
+        from_put: bool,
+    ) -> Result<()> {
         let pretty_key = PrettyPrintRecordKey::from(record_key);
         debug!("Validating spends before storage at {pretty_key:?}");
 
@@ -363,8 +379,8 @@ impl Node {
 
         // validate the signed spends against the network and the local knowledge
         debug!("Validating spends for {pretty_key:?} with unique key: {unique_pubkey:?}");
-        let (spend1, maybe_spend2) = match self
-            .signed_spends_to_keep(spends_for_key.clone(), *unique_pubkey)
+        let validated_spends = match self
+            .signed_spends_to_keep(spends_for_key.clone(), *unique_pubkey, from_put)
             .await
         {
             Ok(s) => s,
@@ -373,12 +389,11 @@ impl Node {
                 return Err(e);
             }
         };
-        let validated_spends = maybe_spend2
-            .clone()
-            .map(|spend2| vec![spend1.clone(), spend2])
-            .unwrap_or_else(|| vec![spend1.clone()]);
-        let len = validated_spends.len();
-        debug!("Got {len} validated spends with key: {unique_pubkey:?} at {pretty_key:?}");
+
+        debug!(
+            "Got {} validated spends with key: {unique_pubkey:?} at {pretty_key:?}",
+            validated_spends.len()
+        );
 
         // store the record into the local storage
         let record = Record {
@@ -387,22 +402,19 @@ impl Node {
             publisher: None,
             expires: None,
         };
-        self.network.put_local_record(record);
+        self.network().put_local_record(record);
         debug!(
             "Successfully stored validated spends with key: {unique_pubkey:?} at {pretty_key:?}"
         );
 
-        // report double spends
-        if let Some(spend2) = maybe_spend2 {
-            warn!("Got a double spend for the Spend PUT with unique_pubkey {unique_pubkey}");
-            return Err(NetworkError::DoubleSpendAttempt(
-                Box::new(spend1),
-                Box::new(spend2),
-            ))?;
+        // Just log the double spend attempt. DoubleSpend error during PUT is not used and would just lead to
+        // RecordRejected marker (which is incorrect, since we store double spends).
+        if validated_spends.len() > 1 {
+            warn!("Got double spend(s) of len {} for the Spend PUT with unique_pubkey {unique_pubkey}", validated_spends.len());
         }
 
         self.record_metrics(Marker::ValidSpendRecordPutFromNetwork(&pretty_key));
-        Ok(CmdOk::StoredSuccessfully)
+        Ok(())
     }
 
     /// Gets CashNotes out of Transfers, this includes network verifications of the Transfers
@@ -421,7 +433,7 @@ impl Node {
         for transfer in transfers {
             match transfer {
                 Transfer::Encrypted(_) => match self
-                    .network
+                    .network()
                     .verify_and_unpack_transfer(&transfer, wallet)
                     .await
                 {
@@ -434,7 +446,7 @@ impl Node {
                 },
                 Transfer::NetworkRoyalties(cashnote_redemptions) => {
                     match self
-                        .network
+                        .network()
                         .verify_cash_notes_redemptions(royalties_pk, &cashnote_redemptions)
                         .await
                     {
@@ -486,7 +498,7 @@ impl Node {
         trace!("Validating record payment for {pretty_key}");
 
         // load wallet
-        let mut wallet = HotWallet::load_from(&self.network.root_dir_path)?;
+        let mut wallet = HotWallet::load_from(self.network().root_dir_path())?;
         let old_balance = wallet.balance().as_nano();
 
         // unpack transfer
@@ -498,7 +510,7 @@ impl Node {
         trace!("Received payment of {received_fee:?} for {pretty_key}");
 
         // Notify `record_store` that the node received a payment.
-        self.network.notify_payment_received();
+        self.network().notify_payment_received();
 
         // deposit the CashNotes in our wallet
         wallet.deposit_and_store_to_disk(&cash_notes)?;
@@ -509,7 +521,7 @@ impl Node {
         );
 
         #[cfg(feature = "open-metrics")]
-        if let Some(node_metrics) = &self.node_metrics {
+        if let Some(node_metrics) = self.node_metrics() {
             let _ = node_metrics
                 .current_reward_wallet_balance
                 .set(new_balance as i64);
@@ -522,7 +534,7 @@ impl Node {
 
         // check if the quote is valid
         let storecost = payment.quote.cost;
-        verify_quote_for_storecost(&self.network, payment.quote, address)?;
+        verify_quote_for_storecost(self.network(), payment.quote, address)?;
         trace!("Payment quote valid for record {pretty_key}");
 
         // Let's check payment is sufficient both for our store cost and for network royalties
@@ -566,7 +578,7 @@ impl Node {
         let key = NetworkAddress::from_register_address(*reg_addr).to_record_key();
 
         // get local register
-        let maybe_record = self.network.get_local_record(&key).await?;
+        let maybe_record = self.network().get_local_record(&key).await?;
         let record = match maybe_record {
             Some(r) => r,
             None => {
@@ -596,7 +608,7 @@ impl Node {
         // get the local spends
         let record_key = NetworkAddress::from_spend_address(addr).to_record_key();
         debug!("Checking for local spends with key: {record_key:?}");
-        let local_record = match self.network.get_local_record(&record_key).await? {
+        let local_record = match self.network().get_local_record(&record_key).await? {
             Some(r) => r,
             None => {
                 debug!("Spend is not present locally: {record_key:?}");
@@ -616,28 +628,45 @@ impl Node {
     }
 
     /// Determine which spends our node should keep and store
-    /// - checks if we already have local copies and trusts them to be valid
-    /// - downloads spends from the network as well
-    /// - verifies incoming spends before trusting them
-    /// - ignores received invalid spends
-    /// - returns the valid spends to store
-    /// - returns max 2 spends to store
-    /// - if we have more than 2 valid spends, returns the first 2
+    /// - if our local copy has reached the len/size limits, we don't store anymore from kad::PUT and return the local copy
+    /// - else if the request is from replication OR if limit not reached during kad::PUT, then:
+    /// - trust local spends
+    /// - downloads spends from the network
+    /// - verifies incoming spend + network spends and ignores the invalid ones.
+    /// - orders all the verified spends from local + incoming + network
+    /// - returns a maximum of MAX_DOUBLE_SPEND_ATTEMPTS_TO_KEEP_PER_RECORD spends
     async fn signed_spends_to_keep(
         &self,
         signed_spends: Vec<SignedSpend>,
         unique_pubkey: UniquePubkey,
-    ) -> Result<(SignedSpend, Option<SignedSpend>)> {
+        from_put: bool,
+    ) -> Result<Vec<SignedSpend>> {
         let spend_addr = SpendAddress::from_unique_pubkey(&unique_pubkey);
         debug!(
             "Validating before storing spend at {spend_addr:?} with unique key: {unique_pubkey}"
         );
 
         let local_spends = self.get_local_spends(spend_addr).await?;
+        let size_of_local_spends = try_serialize_record(&local_spends, RecordKind::Spend)?
+            .to_vec()
+            .len();
+        let max_spend_len_reached =
+            local_spends.len() >= MAX_DOUBLE_SPEND_ATTEMPTS_TO_KEEP_FROM_PUTS;
+        let max_spend_size_reached = {
+            // todo: limit size of a single signed spend to < max_packet_size/2
+            let size_limit = size_of_local_spends >= MAX_PACKET_SIZE / 2;
+            // just so that we can store the double spend
+            size_limit && local_spends.len() > 1
+        };
+
+        if (max_spend_len_reached || max_spend_size_reached) && from_put {
+            info!("We already have {MAX_DOUBLE_SPEND_ATTEMPTS_TO_KEEP_FROM_PUTS} spends locally or have maximum size of spends, skipping spends received via PUT for {unique_pubkey:?}");
+            return Ok(local_spends);
+        }
         let mut all_verified_spends = BTreeSet::from_iter(local_spends.into_iter());
 
         // get spends from the network at the address for that unique pubkey
-        let network_spends = match self.network.get_raw_spends(spend_addr).await {
+        let network_spends = match self.network().get_raw_spends(spend_addr).await {
             Ok(spends) => spends,
             Err(NetworkError::GetRecordError(GetRecordError::RecordNotFound)) => vec![],
             Err(NetworkError::GetRecordError(GetRecordError::SplitRecord { result_map })) => {
@@ -662,7 +691,7 @@ impl Node {
         for s in signed_spends.into_iter().chain(network_spends.into_iter()) {
             let self_clone = self.clone();
             let _ = tasks.spawn(async move {
-                let res = self_clone.network.verify_spend(&s).await;
+                let res = self_clone.network().verify_spend(&s).await;
                 (s, res)
             });
         }
@@ -687,28 +716,24 @@ impl Node {
             }
         }
 
-        // return the single unique spend to store
-        match all_verified_spends
+        // todo: should we also check the size of spends here? Maybe just limit the size of a single
+        // SignedSpend to < max_packet_size/2 so that we can store atleast 2 of them.
+        let verified_spends = all_verified_spends
             .into_iter()
-            .collect::<Vec<SignedSpend>>()
-            .as_slice()
-        {
-            [a] => {
-                debug!("Got a single valid spend for {unique_pubkey:?}");
-                Ok((a.to_owned(), None))
-            }
-            [a, b] => {
-                warn!("Got a double spend for {unique_pubkey:?}");
-                Ok((a.to_owned(), Some(b.to_owned())))
-            }
-            _ => {
-                debug!(
-                    "No valid spends found while validating Spend PUT. Who is sending us garbage?"
-                );
-                Err(Error::InvalidRequest(format!(
-                    "Found no valid spends while validating Spend PUT for {unique_pubkey:?}"
-                )))
-            }
+            .take(MAX_DOUBLE_SPEND_ATTEMPTS_TO_KEEP_PER_RECORD)
+            .collect::<Vec<SignedSpend>>();
+
+        if verified_spends.is_empty() {
+            debug!("No valid spends found while validating Spend PUT. Who is sending us garbage?");
+            Err(Error::InvalidRequest(format!(
+                "Found no valid spends while validating Spend PUT for {unique_pubkey:?}"
+            )))
+        } else if verified_spends.len() > 1 {
+            warn!("Got a double spend for {unique_pubkey:?}");
+            Ok(verified_spends)
+        } else {
+            debug!("Got a single valid spend for {unique_pubkey:?}");
+            Ok(verified_spends)
         }
     }
 }

@@ -61,7 +61,6 @@ use std::{
     net::SocketAddr,
     num::NonZeroUsize,
     path::PathBuf,
-    sync::Arc,
 };
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Duration;
@@ -103,7 +102,7 @@ pub(crate) type BadNodes = BTreeMap<PeerId, (Vec<(NodeIssue, Instant)>, bool)>;
 /// What is the largest packet to send over the network.
 /// Records larger than this will be rejected.
 // TODO: revisit once cashnote_redemption is in
-const MAX_PACKET_SIZE: usize = 1024 * 1024 * 5; // the chunk size is 1mb, so should be higher than that to prevent failures, 5mb here to allow for CashNote storage
+pub const MAX_PACKET_SIZE: usize = 1024 * 1024 * 5; // the chunk size is 1mb, so should be higher than that to prevent failures, 5mb here to allow for CashNote storage
 
 // Timeout for requests sent/received through the request_response behaviour.
 const REQUEST_TIMEOUT_DEFAULT_S: Duration = Duration::from_secs(30);
@@ -610,16 +609,9 @@ impl NetworkBuilder {
             quotes_history: Default::default(),
         };
 
-        Ok((
-            Network {
-                swarm_cmd_sender,
-                peer_id: Arc::new(peer_id),
-                root_dir_path: Arc::new(self.root_dir),
-                keypair: Arc::new(self.keypair),
-            },
-            network_event_receiver,
-            swarm_driver,
-        ))
+        let network = Network::new(swarm_cmd_sender, peer_id, self.root_dir, self.keypair);
+
+        Ok((network, network_event_receiver, swarm_driver))
     }
 }
 

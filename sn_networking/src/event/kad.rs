@@ -412,10 +412,8 @@ impl SwarmDriver {
                     }
                     if !accumulated_spends.is_empty() {
                         info!("For record {pretty_key:?} task {query_id:?}, found split record for a spend, accumulated and sending them as a single record");
-                        let accumulated_spends = accumulated_spends
-                            .into_iter()
-                            .take(2)
-                            .collect::<Vec<SignedSpend>>();
+                        let accumulated_spends =
+                            accumulated_spends.into_iter().collect::<Vec<SignedSpend>>();
 
                         let bytes = try_serialize_record(&accumulated_spends, RecordKind::Spend)?;
 

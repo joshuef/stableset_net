@@ -32,7 +32,7 @@ impl Node {
     ) -> Result<()> {
         for (holder, key) in keys_to_fetch {
             let node = self.clone();
-            let requester = NetworkAddress::from_peer(*self.network.peer_id);
+            let requester = NetworkAddress::from_peer(self.network().peer_id());
             let _handle: JoinHandle<Result<()>> = spawn(async move {
                 let pretty_key = PrettyPrintRecordKey::from(&key).into_owned();
                 trace!("Fetching record {pretty_key:?} from node {holder:?}");
@@ -40,7 +40,7 @@ impl Node {
                     requester,
                     key: NetworkAddress::from_record_key(&key),
                 });
-                let record_opt = if let Ok(resp) = node.network.send_request(req, holder).await {
+                let record_opt = if let Ok(resp) = node.network().send_request(req, holder).await {
                     match resp {
                         Response::Query(QueryResponse::GetReplicatedRecord(result)) => match result
                         {
@@ -71,16 +71,16 @@ impl Node {
                         target_record: None,
                         expected_holders: Default::default(),
                     };
-                    node.network.get_record_from_network(key, &get_cfg).await?
+                    node.network()
+                        .get_record_from_network(key, &get_cfg)
+                        .await?
                 };
 
                 trace!(
                     "Got Replication Record {pretty_key:?} from network, validating and storing it"
                 );
-                let result = node.store_prepaid_record(record).await?;
-                trace!(
-                    "Completed storing Replication Record {pretty_key:?} from network, result: {result:?}"
-                );
+                node.store_replicated_in_record(record).await?;
+                trace!("Completed storing Replication Record {pretty_key:?} from network.");
 
                 Ok(())
             });
@@ -95,7 +95,7 @@ impl Node {
         paid_key: RecordKey,
         record_type: RecordType,
     ) {
-        let network = self.network.clone();
+        let network = self.network().clone();
 
         let _handle = spawn(async move {
             let start = std::time::Instant::now();
@@ -143,7 +143,7 @@ impl Node {
             };
 
             // remove ourself from these calculations
-            closest_k_peers.retain(|peer_id| peer_id != &*network.peer_id);
+            closest_k_peers.retain(|peer_id| peer_id != &network.peer_id());
 
             let data_addr = NetworkAddress::from_record_key(&paid_key);
 
@@ -161,7 +161,7 @@ impl Node {
                 }
             };
 
-            let our_peer_id = *network.peer_id;
+            let our_peer_id = network.peer_id();
             let our_address = NetworkAddress::from_peer(our_peer_id);
             #[allow(clippy::mutable_key_type)] // for Bytes in NetworkAddress
             let keys = vec![(data_addr.clone(), record_type.clone())];
