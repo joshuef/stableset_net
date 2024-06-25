@@ -14,7 +14,7 @@ We see ~1mb/s traffic on nodes in a moderate network.
 
 ##Decision
 
-We decrease the identify interval to once every two hours. (It would be sent out on any node joining, and realistically things will not change too often here.)
+We decrease the identify interval to once every hour. (It would be sent out on any node joining, and realistically things will not change too often here.)
 
 ##Consequences
 
