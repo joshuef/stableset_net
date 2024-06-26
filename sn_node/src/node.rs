@@ -458,6 +458,7 @@ impl Node {
                 // try replication here
                 let network = self.network().clone();
                 self.record_metrics(Marker::IntervalReplicationTriggered);
+
                 let _handle = spawn(async move {
                     Self::try_interval_replication(network);
                 });

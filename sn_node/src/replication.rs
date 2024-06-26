@@ -89,7 +89,7 @@ impl Node {
     }
 
     /// Replicate a fresh record to its close group peers.
-    /// This should not be triggered by a record we receive via replicaiton fetch
+    /// This should not be triggered by a record we receive via replication fetch
     pub(crate) fn replicate_valid_fresh_record(
         &self,
         paid_key: RecordKey,

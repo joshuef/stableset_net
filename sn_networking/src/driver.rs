@@ -109,6 +109,9 @@ const REQUEST_TIMEOUT_DEFAULT_S: Duration = Duration::from_secs(30);
 // Sets the keep-alive timeout of idle connections.
 const CONNECTION_KEEP_ALIVE_TIMEOUT: Duration = Duration::from_secs(30);
 
+// Inverval of resending identify to connected peers.
+const RESEND_IDENTIFY_INVERVAL: Duration = Duration::from_secs(3600);
+
 const NETWORKING_CHANNEL_SIZE: usize = 10_000;
 
 /// Time before a Kad query times out if no response is received
@@ -500,8 +503,11 @@ impl NetworkBuilder {
         let identify_protocol_str = IDENTIFY_PROTOCOL_STR.to_string();
         info!("Building Identify with identify_protocol_str: {identify_protocol_str:?} and identify_version: {identify_version:?}");
         let identify = {
-            let cfg = libp2p::identify::Config::new(identify_protocol_str, self.keypair.public())
-                .with_agent_version(identify_version);
+            let mut cfg =
+                libp2p::identify::Config::new(identify_protocol_str, self.keypair.public())
+                    .with_agent_version(identify_version);
+            // Enlength the identify interval from default 5 mins to 1 hour.
+            cfg.interval = RESEND_IDENTIFY_INVERVAL;
             libp2p::identify::Behaviour::new(cfg)
         };
 
@@ -607,6 +613,8 @@ impl NetworkBuilder {
             bad_nodes: Default::default(),
             bad_nodes_ongoing_verifications: Default::default(),
             quotes_history: Default::default(),
+            replication_targets: Default::default(),
+            last_replication_time: Instant::now(),
         };
 
         let network = Network::new(swarm_cmd_sender, peer_id, self.root_dir, self.keypair);
@@ -657,6 +665,10 @@ pub struct SwarmDriver {
     pub(crate) bad_nodes: BadNodes,
     pub(crate) bad_nodes_ongoing_verifications: BTreeSet<PeerId>,
     pub(crate) quotes_history: BTreeMap<PeerId, PaymentQuote>,
+    pub(crate) replication_targets: BTreeMap<PeerId, Instant>,
+    // The last time we replicated the records to a peer, this allows us to
+    // throttle replication to avoid duplication in times of high churn.
+    pub(crate) last_replication_time: Instant,
 }
 
 impl SwarmDriver {
