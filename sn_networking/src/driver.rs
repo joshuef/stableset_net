@@ -614,6 +614,7 @@ impl NetworkBuilder {
             bad_nodes_ongoing_verifications: Default::default(),
             quotes_history: Default::default(),
             replication_targets: Default::default(),
+            last_replication_time: Instant::now(),
         };
 
         let network = Network::new(swarm_cmd_sender, peer_id, self.root_dir, self.keypair);
@@ -665,6 +666,9 @@ pub struct SwarmDriver {
     pub(crate) bad_nodes_ongoing_verifications: BTreeSet<PeerId>,
     pub(crate) quotes_history: BTreeMap<PeerId, PaymentQuote>,
     pub(crate) replication_targets: BTreeMap<PeerId, Instant>,
+    // The last time we replicated the records to a peer, this allows us to
+    // throttle replication to avoid duplication in times of high churn.
+    pub(crate) last_replication_time: Instant,
 }
 
 impl SwarmDriver {

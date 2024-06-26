@@ -39,6 +39,9 @@ use crate::target_arch::Instant;
 
 const MAX_CONTINUOUS_HDD_WRITE_ERROR: usize = 5;
 
+/// The minimum interval that needs to pass between replication attempts.
+const REPLICATION_THROTTLE_INTERVAL: Duration = Duration::from_secs(60);
+
 // Shall be synced with `sn_node::PERIODIC_REPLICATION_INTERVAL_MAX_S`
 const REPLICATION_TIMEOUT: Duration = Duration::from_secs(45);
 
@@ -862,6 +865,17 @@ impl SwarmDriver {
     }
 
     fn try_interval_replication(&mut self) -> Result<()> {
+        let time_since_last_replication = self.last_replication_time.elapsed();
+        if time_since_last_replication < REPLICATION_THROTTLE_INTERVAL {
+            debug!(
+                "Interval replication throttled, only {:?}s passed since last replication",
+                time_since_last_replication.as_secs()
+            );
+            return Ok(());
+        }
+
+        self.last_replication_time = Instant::now();
+
         // get closest peers from buckets, sorted by increasing distance to us
         let our_peer_id = self.self_peer_id.into();
         let closest_k_peers = self
