@@ -62,6 +62,10 @@ pub enum LocalSwarmCmd {
     GetAllLocalPeers {
         sender: oneshot::Sender<Vec<PeerId>>,
     },
+    /// Return the current GetRange as determined by the SwarmDriver
+    GetCurrentRange {
+        sender: oneshot::Sender<Option<KBucketDistance>>,
+    },
     /// Get a map where each key is the ilog2 distance of that Kbucket and each value is a vector of peers in that
     /// bucket.
     GetKBuckets {
@@ -247,6 +251,11 @@ impl Debug for LocalSwarmCmd {
             LocalSwarmCmd::GetKBuckets { .. } => {
                 write!(f, "SwarmCmd::GetKBuckets")
             }
+
+            LocalSwarmCmd::GetCurrentRange { .. } => {
+                write!(f, "SwarmCmd::GetCurrentRange")
+            }
+
             LocalSwarmCmd::GetSwarmLocalState { .. } => {
                 write!(f, "SwarmCmd::GetSwarmLocalState")
             }
@@ -347,7 +356,7 @@ impl SwarmDriver {
             NetworkSwarmCmd::TriggerIntervalReplication => {
                 cmd_string = "TriggerIntervalReplication";
 
-                let our_acceptable_range = self.get_peers_within_get_range();
+                let our_acceptable_range = self.get_request_range();
                 self.try_interval_replication(our_acceptable_range)?;
             }
             NetworkSwarmCmd::GetNetworkRecord { key, sender, cfg } => {
@@ -712,7 +721,10 @@ impl SwarmDriver {
                     .record_addresses();
                 let _ = sender.send(addresses);
             }
-
+            LocalSwarmCmd::GetCurrentRange { sender } => {
+                cmd_string = "GetCurrentRange";
+                let _ = sender.send(self.get_request_range());
+            }
             LocalSwarmCmd::GetAllLocalPeers { sender } => {
                 cmd_string = "GetAllLocalPeers";
                 let _ = sender.send(self.get_all_local_peers());
