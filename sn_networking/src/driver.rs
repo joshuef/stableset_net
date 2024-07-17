@@ -753,16 +753,18 @@ impl SwarmDriver {
                 }
                 _ = set_farthest_record_interval.tick() => {
                     if !self.is_client {
-                        let closest_k_peers = self.get_closest_k_value_local_peers();
+                        if let Some(get_range) = self.get_request_range() {
+                        // set any new distance to farthest record in the store
+                        self.swarm.behaviour_mut().kademlia.store_mut().set_distance_range(get_range);
 
-                        if let Some(distance) = self.get_farthest_data_address_estimate(&closest_k_peers) {
-                            // set any new distance to farthest record in the store
-                            self.swarm.behaviour_mut().kademlia.store_mut().set_distance_range(distance);
+                        // the distance range within the replication_fetcher shall be in sync as well
+                        self.replication_fetcher.set_replication_distance_range(get_range);
 
-                            let replication_distance = self.swarm.behaviour_mut().kademlia.store_mut().get_farthest_replication_distance_bucket().unwrap_or(1);
-                            // the distance range within the replication_fetcher shall be in sync as well
-                            self.replication_fetcher.set_replication_distance_range(replication_distance);
                         }
+                        else {
+                            warn!("No GetRange yet defined during far record check interval");
+                        }
+
                     }
                 }
                 _ = relay_manager_reservation_interval.tick() => self.relay_manager.try_connecting_to_relay(&mut self.swarm, &self.bad_nodes),
@@ -862,31 +864,6 @@ impl SwarmDriver {
         }
 
         farthest_get_range_record_distance.copied()
-    }
-
-    /// Returns the farthest bucket, close to but probably farther than our responsibilty range.
-    /// This simply uses the closest k peers to estimate the farthest address as
-    /// `K_VALUE`th peer's bucket.
-    fn get_farthest_data_address_estimate(
-        &mut self,
-        // Sorted list of closest k peers to our peer id.
-        closest_k_peers: &[PeerId],
-    ) -> Option<u32> {
-        // if we don't have enough peers we don't set the distance range yet.
-        let mut farthest_distance = None;
-
-        let our_address = NetworkAddress::from_peer(self.self_peer_id);
-
-        // get K_VALUEth peer's address distance
-        // This is a rough estimate of the farthest address we might be responsible for.
-        // We want this to be higher than actually necessary, so we retain more data
-        // and can be sure to pass bad node checks
-        if let Some(peer) = closest_k_peers.last() {
-            let address = NetworkAddress::from_peer(*peer);
-            farthest_distance = our_address.distance(&address).ilog2();
-        }
-
-        farthest_distance
     }
 
     /// Sends an event after pushing it off thread so as to be non-blocking
