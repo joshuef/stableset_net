@@ -780,6 +780,7 @@ impl SwarmDriver {
     pub(crate) fn add_distance_range_for_gets(&mut self) {
         // TODO: define how/where this distance comes from
 
+        info!("Adding a distance range to our getrange stash");
         const TARGET_PEER: usize = 42;
 
         let our_address = NetworkAddress::from_peer(self.self_peer_id);
@@ -836,7 +837,12 @@ impl SwarmDriver {
             .kademlia
             .get_closest_local_peers(&our_key);
 
+        self.range_distances.push_back(last_peers_distance);
+
         let farthest_get_range_record_distance = self.range_distances.iter().max();
+
+        // now we're just logging for stats abotu peers in range:
+        //
 
         let mut peers_within_range = 0;
         if let Some(farthest_range) = farthest_get_range_record_distance {
@@ -855,7 +861,6 @@ impl SwarmDriver {
         }
 
         info!("Peers within range: {peers_within_range:?}");
-        self.range_distances.push_back(last_peers_distance);
     }
 
     /// Returns the KBucketDistance we are currently using as our X value
