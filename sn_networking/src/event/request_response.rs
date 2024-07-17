@@ -12,7 +12,6 @@ use crate::{
     sort_peers_by_address_and_limit, sort_peers_by_address_and_limit_by_distance, MsgResponder,
     NetworkError, NetworkEvent, SwarmDriver, CLOSE_GROUP_SIZE,
 };
-use itertools::Itertools;
 use libp2p::{
     kad::KBucketDistance,
     kad::RecordKey,
@@ -255,7 +254,8 @@ impl SwarmDriver {
         let mut rng = thread_rng();
         // 5% probability
         if incoming_keys.len() > 1 && rng.gen_bool(0.05) {
-            let keys_to_verify = self.select_verification_data_candidates(sender);
+            let keys_to_verify =
+                Self::select_verification_data_candidates(&peers, &all_keys, sender);
 
             if keys_to_verify.is_empty() {
                 debug!("No valid candidate to be checked against peer {holder:?}");
@@ -354,31 +354,17 @@ impl SwarmDriver {
     /// Check among all chunk type records that we have, select those close to the peer,
     /// and randomly pick one as the verification candidate.
     #[allow(clippy::mutable_key_type)]
-    fn select_verification_data_candidates(&mut self, peer: NetworkAddress) -> Vec<NetworkAddress> {
-        let mut closest_peers = self
-            .swarm
-            .behaviour_mut()
-            .kademlia
-            .get_closest_local_peers(&self.self_peer_id.into())
-            .map(|peer| peer.into_preimage())
-            .take(20)
-            .collect_vec();
-        closest_peers.push(self.self_peer_id);
-
+    fn select_verification_data_candidates(
+        all_peers: &Vec<PeerId>,
+        all_keys: &HashMap<RecordKey, (NetworkAddress, RecordType)>,
+        peer: NetworkAddress,
+    ) -> Vec<NetworkAddress> {
         let target_peer = if let Some(peer_id) = peer.as_peer_id() {
             peer_id
         } else {
             error!("Target {peer:?} is not a valid PeerId");
             return vec![];
         };
-
-        #[allow(clippy::mutable_key_type)]
-        let all_keys = self
-            .swarm
-            .behaviour_mut()
-            .kademlia
-            .store_mut()
-            .record_addresses_ref();
 
         // Targeted chunk type record shall be expected within the close range from our perspective.
         let mut verify_candidates: Vec<NetworkAddress> = all_keys
@@ -387,7 +373,7 @@ impl SwarmDriver {
                 if RecordType::Chunk == *record_type {
                     // Here we take the actual closest, as this is where we want to be
                     // strict about who does have the data...
-                    match sort_peers_by_address_and_limit(&closest_peers, addr, CLOSE_GROUP_SIZE) {
+                    match sort_peers_by_address_and_limit(all_peers, addr, CLOSE_GROUP_SIZE) {
                         Ok(close_group) => {
                             if close_group.contains(&&target_peer) {
                                 Some(addr.clone())
