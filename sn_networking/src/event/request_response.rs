@@ -182,11 +182,17 @@ impl SwarmDriver {
         Ok(())
     }
 
+    /// Add keys to the replication fetcher.
+    /// Pushes as much work off-thread as possible
     fn add_keys_to_replication_fetcher(
         &mut self,
         sender: NetworkAddress,
         incoming_keys: Vec<(NetworkAddress, RecordType)>,
     ) {
+        let peers = self.get_all_local_peers();
+        let get_range = self.get_request_range();
+        let our_peer_id = self.self_peer_id;
+
         let holder = if let Some(peer_id) = sender.as_peer_id() {
             peer_id
         } else {
@@ -201,8 +207,7 @@ impl SwarmDriver {
 
         // accept replication requests from all peers within our
         // X-range
-        let peers = self.get_all_local_peers();
-        if !peers.contains(&holder) || holder == self.self_peer_id {
+        if !peers.contains(&holder) || holder == our_peer_id {
             trace!("Holder {holder:?} is self or not in replication range.");
             return;
         }
@@ -224,10 +229,9 @@ impl SwarmDriver {
             .record_addresses_ref()
             .clone();
 
-        let get_range = self.get_request_range();
         // For fetching, only handle those non-exist and in close range keys
         let keys_to_store = Self::select_non_existent_records_for_replications(
-            &self.self_peer_id,
+            &our_peer_id,
             &all_keys,
             get_range,
             &incoming_keys,
