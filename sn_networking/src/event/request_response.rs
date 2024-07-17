@@ -199,17 +199,17 @@ impl SwarmDriver {
             return;
         };
 
-        trace!(
-            "Received replication list from {holder:?} of {} keys",
-            incoming_keys.len()
-        );
-
         // accept replication requests from all peers within our
         // X-range
         if !peers.contains(&holder) || holder == our_peer_id {
             trace!("Holder {holder:?} is self or not in replication range.");
             return;
         }
+
+        trace!(
+            "Received replication list from {holder:?} of {} keys",
+            incoming_keys.len()
+        );
 
         // On receive a replication_list from a close_group peer, we undertake two tasks:
         //   1, For those keys that we don't have:
@@ -254,17 +254,23 @@ impl SwarmDriver {
         let mut rng = thread_rng();
         // 5% probability
         if incoming_keys.len() > 1 && rng.gen_bool(0.05) {
-            let keys_to_verify =
-                Self::select_verification_data_candidates(&peers, &all_keys, sender);
+            let event_sender = self.event_sender.clone();
+            let _handle = tokio::spawn(async move {
+                let keys_to_verify =
+                    Self::select_verification_data_candidates(&peers, &all_keys, sender);
 
-            if keys_to_verify.is_empty() {
-                debug!("No valid candidate to be checked against peer {holder:?}");
-            } else {
-                self.send_event(NetworkEvent::ChunkProofVerification {
-                    peer_id: holder,
-                    keys_to_verify,
-                });
-            }
+                if keys_to_verify.is_empty() {
+                    debug!("No valid candidate to be checked against peer {holder:?}");
+                } else if let Err(error) = event_sender
+                    .send(NetworkEvent::ChunkProofVerification {
+                        peer_id: holder,
+                        keys_to_verify,
+                    })
+                    .await
+                {
+                    error!("SwarmDriver failed to send event: {}", error);
+                }
+            });
         }
     }
 
