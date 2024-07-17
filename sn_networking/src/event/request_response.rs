@@ -39,6 +39,7 @@ impl SwarmDriver {
                     request_id,
                     ..
                 } => {
+                    let start = std::time::Instant::now();
                     trace!("Received request {request_id:?} from peer {peer:?}, req: {request:?}");
                     // If the request is replication or quote verification,
                     // we can handle it and send the OK response here.
@@ -55,6 +56,8 @@ impl SwarmDriver {
                                 .map_err(|_| NetworkError::InternalMsgChannelDropped)?;
 
                             self.add_keys_to_replication_fetcher(holder, keys);
+
+                            info!("RR: replicate keys handled in: {:?}", start.elapsed());
                         }
                         Request::Cmd(sn_protocol::messages::Cmd::QuoteVerification {
                             quotes,
@@ -79,7 +82,8 @@ impl SwarmDriver {
                                         .map(|peer_id| (peer_id, quote.clone()))
                                 })
                                 .collect();
-                            self.send_event(NetworkEvent::QuoteVerification { quotes })
+                            self.send_event(NetworkEvent::QuoteVerification { quotes });
+                            info!("RR: quote verification handled in: {:?}", start.elapsed());
                         }
                         Request::Cmd(sn_protocol::messages::Cmd::PeerConsideredAsBad {
                             detected_by,
@@ -102,12 +106,16 @@ impl SwarmDriver {
                             } else {
                                 error!("Received a bad_peer notification from {detected_by:?}, targeting {bad_peer:?}, which is not us.");
                             }
+
+                            info!("RR: bad_peer handled in: {:?}", start.elapsed());
                         }
                         Request::Query(query) => {
                             self.send_event(NetworkEvent::QueryRequestReceived {
                                 query,
                                 channel: MsgResponder::FromPeer(channel),
-                            })
+                            });
+
+                            info!("RR: QueryRequestReceived handled in: {:?}", start.elapsed());
                         }
                     }
                 }
