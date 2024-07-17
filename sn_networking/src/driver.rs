@@ -830,16 +830,6 @@ impl SwarmDriver {
 
         info!("Adding new distance range: {last_peers_distance:?}");
 
-        self.range_distances.push_back(last_peers_distance);
-    }
-
-    /// Returns the KBucketDistance we are currently using as our X value
-    /// for range based search.
-    pub(crate) fn get_request_range(&mut self) -> Option<KBucketDistance> {
-        // TODO: Is this the correct keytype for comparisons?
-        let our_address = NetworkAddress::from_peer(self.self_peer_id);
-        let our_key = our_address.as_kbucket_key();
-
         let sorted_peers_iter = self
             .swarm
             .behaviour_mut()
@@ -848,20 +838,31 @@ impl SwarmDriver {
 
         let farthest_get_range_record_distance = self.range_distances.iter().max();
 
+        let mut peers_within_range = 0;
         if let Some(farthest_range) = farthest_get_range_record_distance {
             // lets print how many are within range
-            for (i, peer) in sorted_peers_iter.enumerate() {
+            for peer in sorted_peers_iter {
                 let peer_distance_from_us = peer.distance(&our_key);
 
                 if &peer_distance_from_us < farthest_range {
+                    peers_within_range += 1;
                     info!("Peer {peer:?} is {peer_distance_from_us:?} and would be within the range based search group!");
-                    info!("That's {i:?} peers within the range!");
                 }
             }
         } else {
             warn!("No range distance has been set, no peers can be found within the range");
-            return None;
+            return;
         }
+
+        info!("Peers within range: {peers_within_range:?}");
+        self.range_distances.push_back(last_peers_distance);
+    }
+
+    /// Returns the KBucketDistance we are currently using as our X value
+    /// for range based search.
+    pub(crate) fn get_request_range(&self) -> Option<KBucketDistance> {
+        // TODO: Is this the correct keytype for comparisons?
+        let farthest_get_range_record_distance = self.range_distances.iter().max();
 
         farthest_get_range_record_distance.copied()
     }

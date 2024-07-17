@@ -6,6 +6,8 @@
 // KIND, either express or implied. Please review the Licences for the specific language governing
 // permissions and limitations relating to use of the SAFE Network Software.
 
+use std::collections::HashMap;
+
 use crate::{
     sort_peers_by_address_and_limit, sort_peers_by_address_and_limit_by_distance, MsgResponder,
     NetworkError, NetworkEvent, SwarmDriver, CLOSE_GROUP_SIZE,
@@ -13,6 +15,7 @@ use crate::{
 use itertools::Itertools;
 use libp2p::{
     kad::KBucketDistance,
+    kad::RecordKey,
     request_response::{self, Message},
     PeerId,
 };
@@ -212,23 +215,31 @@ impl SwarmDriver {
         //   3, For those spends that we have that differ in the hash, we fetch the other version
         //         and update our local copy.
 
+        #[allow(clippy::mutable_key_type)]
+        let all_keys = self
+            .swarm
+            .behaviour_mut()
+            .kademlia
+            .store_mut()
+            .record_addresses_ref()
+            .clone();
+
+        let get_range = self.get_request_range();
         // For fetching, only handle those non-exist and in close range keys
-        let keys_to_store =
-            self.select_non_existent_records_for_replications(&incoming_keys, &peers);
+        let keys_to_store = Self::select_non_existent_records_for_replications(
+            &self.self_peer_id,
+            &all_keys,
+            get_range,
+            &incoming_keys,
+            &peers,
+        );
 
         if keys_to_store.is_empty() {
             debug!("Empty keys to store after adding to");
         } else {
-            #[allow(clippy::mutable_key_type)]
-            let all_keys = self
-                .swarm
-                .behaviour_mut()
-                .kademlia
-                .store_mut()
-                .record_addresses_ref();
             let keys_to_fetch = self
                 .replication_fetcher
-                .add_keys(holder, keys_to_store, all_keys);
+                .add_keys(holder, keys_to_store, &all_keys);
             if keys_to_fetch.is_empty() {
                 trace!("no waiting keys to fetch from the network");
             } else {
@@ -255,18 +266,14 @@ impl SwarmDriver {
 
     /// Checks suggested records against what we hold, so we only
     /// enqueue what we do not have
+    #[allow(clippy::mutable_key_type)]
     fn select_non_existent_records_for_replications(
-        &mut self,
+        our_peer_id: &PeerId,
+        locally_stored_keys: &HashMap<RecordKey, (NetworkAddress, RecordType)>,
+        get_request_range: Option<KBucketDistance>,
         incoming_keys: &[(NetworkAddress, RecordType)],
         peers: &Vec<PeerId>,
     ) -> Vec<(NetworkAddress, RecordType)> {
-        #[allow(clippy::mutable_key_type)]
-        let locally_stored_keys = self
-            .swarm
-            .behaviour_mut()
-            .kademlia
-            .store_mut()
-            .record_addresses_ref();
         let non_existent_keys: Vec<_> = incoming_keys
             .iter()
             .filter(|(addr, record_type)| {
@@ -287,11 +294,11 @@ impl SwarmDriver {
             })
             .collect();
 
-        if let Some(our_distance_range) = self.get_request_range() {
+        if let Some(our_distance_range) = get_request_range {
             non_existent_keys
                 .into_iter()
                 .filter_map(|(key, record_type)| {
-                    if Self::is_in_close_range(&self.self_peer_id, key, peers, our_distance_range) {
+                    if Self::is_in_close_range(our_peer_id, key, peers, our_distance_range) {
                         Some((key.clone(), record_type.clone()))
                     } else {
                         // Reduce the log level as there will always be around 40% records being
