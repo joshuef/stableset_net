@@ -9,11 +9,10 @@
 use std::collections::HashMap;
 
 use crate::{
-    sort_peers_by_address_and_limit, sort_peers_by_address_and_limit_by_distance, MsgResponder,
-    NetworkError, NetworkEvent, SwarmDriver, CLOSE_GROUP_SIZE,
+    sort_peers_by_address_and_limit, MsgResponder, NetworkError, NetworkEvent, SwarmDriver,
+    CLOSE_GROUP_SIZE,
 };
 use libp2p::{
-    kad::KBucketDistance,
     kad::RecordKey,
     request_response::{self, Message},
     PeerId,
@@ -24,6 +23,7 @@ use sn_protocol::{
     storage::RecordType,
     NetworkAddress,
 };
+use tokio::time::Instant;
 
 impl SwarmDriver {
     /// Forwards `Request` to the upper layers using `Sender<NetworkEvent>`. Sends `Response` to the peers
@@ -196,6 +196,7 @@ impl SwarmDriver {
         sender: NetworkAddress,
         incoming_keys: Vec<(NetworkAddress, RecordType)>,
     ) {
+        let start = Instant::now();
         let peers = self.get_all_local_peers();
         let get_range = self.get_request_range();
 
@@ -241,27 +242,18 @@ impl SwarmDriver {
             .record_addresses_ref()
             .clone();
 
-        // For fetching, only handle those non-exist and in close range keys
-        let keys_to_store = Self::select_non_existent_records_for_replications(
-            &our_peer_id,
-            &all_keys,
-            get_range,
-            &incoming_keys,
-            &peers,
-        );
+        info!("repl all keys done after: {:?}", start.elapsed());
 
-        if keys_to_store.is_empty() {
-            debug!("Empty keys to store after adding to");
+        let keys_to_fetch = self
+            .replication_fetcher
+            .add_keys(holder, incoming_keys, &all_keys);
+        if keys_to_fetch.is_empty() {
+            trace!("no waiting keys to fetch from the network");
         } else {
-            let keys_to_fetch = self
-                .replication_fetcher
-                .add_keys(holder, keys_to_store, &all_keys);
-            if keys_to_fetch.is_empty() {
-                trace!("no waiting keys to fetch from the network");
-            } else {
-                self.send_event(NetworkEvent::KeysToFetchForReplication(keys_to_fetch));
-            }
+            self.send_event(NetworkEvent::KeysToFetchForReplication(keys_to_fetch));
         }
+
+        info!("repl fetcher added after: {:?}", start.elapsed());
 
         // Only trigger chunk_proof check based every X% of the time
         let mut rng = thread_rng();
@@ -283,90 +275,8 @@ impl SwarmDriver {
                 {
                     error!("SwarmDriver failed to send event: {}", error);
                 }
+                info!("repl verif candidate done after: {:?}", start.elapsed());
             });
-        }
-    }
-
-    /// Checks suggested records against what we hold, so we only
-    /// enqueue what we do not have
-    #[allow(clippy::mutable_key_type)]
-    fn select_non_existent_records_for_replications(
-        our_peer_id: &PeerId,
-        locally_stored_keys: &HashMap<RecordKey, (NetworkAddress, RecordType)>,
-        get_request_range: Option<KBucketDistance>,
-        incoming_keys: &[(NetworkAddress, RecordType)],
-        peers: &Vec<PeerId>,
-    ) -> Vec<(NetworkAddress, RecordType)> {
-        let non_existent_keys: Vec<_> = incoming_keys
-            .iter()
-            .filter(|(addr, record_type)| {
-                let key = addr.to_record_key();
-                let local = locally_stored_keys.get(&key);
-
-                // if we have a local value of matching record_type, we don't need to fetch it
-                if let Some((_, local_record_type)) = local {
-                    let not_same_type = local_record_type != record_type;
-                    if not_same_type {
-                        // Shall only happens for Register, or DoubleSpendAttempts
-                        info!("Record {addr:?} has different type: local {local_record_type:?}, incoming {record_type:?}");
-                    }
-                    not_same_type
-                } else {
-                    true
-                }
-            })
-            .collect();
-
-        if let Some(our_distance_range) = get_request_range {
-            non_existent_keys
-                .into_iter()
-                .filter_map(|(key, record_type)| {
-                    if Self::is_in_close_range(our_peer_id, key, peers, our_distance_range) {
-                        Some((key.clone(), record_type.clone()))
-                    } else {
-                        // Reduce the log level as there will always be around 40% records being
-                        // out of the close range, as the sender side is using `CLOSE_GROUP_SIZE + 2`
-                        // to send our replication list to provide addressing margin.
-                        // Given there will normally be 6 nodes sending such list with interval of 5-10s,
-                        // this will accumulate to a lot of logs with the increasing records uploaded.
-                        trace!("not in close range for key {key:?}");
-                        None
-                    }
-                })
-                .collect()
-        } else {
-            warn!("Not enough peers to determine valid GetRange");
-            non_existent_keys
-                .iter()
-                .map(|(x, y)| (x.clone(), y.clone()))
-                .collect()
-        }
-    }
-
-    /// A close target doesn't falls into the close peers range:
-    /// For example, a node b11111X has an RT: [(1, b1111), (2, b111), (5, b11), (9, b1), (7, b0)]
-    /// Then for a target bearing b011111 as prefix, all nodes in (7, b0) are its close_group peers.
-    /// Then the node b11111X. But b11111X's close_group peers [(1, b1111), (2, b111), (5, b11)]
-    /// are none among target b011111's close range.
-    /// Hence, the ilog2 calculation based on close_range cannot cover such case.
-    /// And have to sort all nodes to figure out whether self is among the close_group to the target.
-    fn is_in_close_range(
-        our_peer_id: &PeerId,
-        target: &NetworkAddress,
-        all_peers: &Vec<PeerId>,
-        distance_range: KBucketDistance,
-    ) -> bool {
-        // if all_peers.len() <= REPLICATION_PEERS_COUNT {
-        //     return true;
-        // }
-
-        // Margin of 2 to allow our RT being bit lagging.
-        match sort_peers_by_address_and_limit_by_distance(all_peers, target, distance_range) {
-            Ok(close_group) => close_group.contains(&our_peer_id),
-            Err(err) => {
-                warn!("Could not get sorted peers for {target:?} with error {err:?}");
-                true
-            }
         }
     }
 
