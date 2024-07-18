@@ -247,6 +247,9 @@ impl SwarmDriver {
         let keys_to_fetch = self
             .replication_fetcher
             .add_keys(holder, incoming_keys, &all_keys);
+
+        let multiple_key_replication = keys_to_fetch.len() > 1;
+
         if keys_to_fetch.is_empty() {
             trace!("no waiting keys to fetch from the network");
         } else {
@@ -257,8 +260,9 @@ impl SwarmDriver {
 
         // Only trigger chunk_proof check based every X% of the time
         let mut rng = thread_rng();
+
         // 5% probability
-        if incoming_keys.len() > 1 && rng.gen_bool(0.05) {
+        if !multiple_key_replication && rng.gen_bool(0.05) {
             let event_sender = self.event_sender.clone();
             let _handle = tokio::spawn(async move {
                 let keys_to_verify =
