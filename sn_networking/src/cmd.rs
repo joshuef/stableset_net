@@ -58,7 +58,7 @@ pub enum NodeIssue {
 
 /// Commands to send to the Swarm
 #[allow(clippy::large_enum_variant)]
-pub enum SwarmCmd {
+pub enum NetworkSwarmCmd {
     Dial {
         addr: Multiaddr,
         sender: oneshot::Sender<Result<()>>,
@@ -187,120 +187,120 @@ pub enum SwarmCmd {
 
 /// Debug impl for SwarmCmd to avoid printing full Record, instead only RecodKey
 /// and RecordKind are printed.
-impl Debug for SwarmCmd {
+impl Debug for NetworkSwarmCmd {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SwarmCmd::Dial { addr, .. } => {
+            NetworkSwarmCmd::Dial { addr, .. } => {
                 write!(f, "SwarmCmd::Dial {{ addr: {addr:?} }}")
             }
-            SwarmCmd::GetNetworkRecord { key, cfg, .. } => {
+            NetworkSwarmCmd::GetNetworkRecord { key, cfg, .. } => {
                 write!(
                     f,
                     "SwarmCmd::GetNetworkRecord {{ key: {:?}, cfg: {cfg:?}",
                     PrettyPrintRecordKey::from(key)
                 )
             }
-            SwarmCmd::PutRecord { record, .. } => {
+            NetworkSwarmCmd::PutRecord { record, .. } => {
                 write!(
                     f,
                     "SwarmCmd::PutRecord {{ key: {:?} }}",
                     PrettyPrintRecordKey::from(&record.key)
                 )
             }
-            SwarmCmd::PutRecordTo { peers, record, .. } => {
+            NetworkSwarmCmd::PutRecordTo { peers, record, .. } => {
                 write!(
                     f,
                     "SwarmCmd::PutRecordTo {{ peers: {peers:?}, key: {:?} }}",
                     PrettyPrintRecordKey::from(&record.key)
                 )
             }
-            SwarmCmd::PutLocalRecord { record } => {
+            NetworkSwarmCmd::PutLocalRecord { record } => {
                 write!(
                     f,
                     "SwarmCmd::PutLocalRecord {{ key: {:?} }}",
                     PrettyPrintRecordKey::from(&record.key)
                 )
             }
-            SwarmCmd::RemoveFailedLocalRecord { key } => {
+            NetworkSwarmCmd::RemoveFailedLocalRecord { key } => {
                 write!(
                     f,
                     "SwarmCmd::RemoveFailedLocalRecord {{ key: {:?} }}",
                     PrettyPrintRecordKey::from(key)
                 )
             }
-            SwarmCmd::AddLocalRecordAsStored { key, record_type } => {
+            NetworkSwarmCmd::AddLocalRecordAsStored { key, record_type } => {
                 write!(
                     f,
                     "SwarmCmd::AddLocalRecordAsStored {{ key: {:?}, record_type: {record_type:?} }}",
                     PrettyPrintRecordKey::from(key)
                 )
             }
-            SwarmCmd::TriggerIntervalReplication => {
+            NetworkSwarmCmd::TriggerIntervalReplication => {
                 write!(f, "SwarmCmd::TriggerIntervalReplication")
             }
-            SwarmCmd::DialWithOpts { opts, .. } => {
+            NetworkSwarmCmd::DialWithOpts { opts, .. } => {
                 write!(f, "SwarmCmd::DialWithOpts {{ opts: {opts:?} }}")
             }
-            SwarmCmd::GetClosestPeersToAddressFromNetwork { key, .. } => {
+            NetworkSwarmCmd::GetClosestPeersToAddressFromNetwork { key, .. } => {
                 write!(f, "SwarmCmd::GetClosestPeers {{ key: {key:?} }}")
             }
-            SwarmCmd::GetClosestKLocalPeers { .. } => {
+            NetworkSwarmCmd::GetClosestKLocalPeers { .. } => {
                 write!(f, "SwarmCmd::GetClosestKLocalPeers")
             }
-            SwarmCmd::GetCloseGroupLocalPeers { key, .. } => {
+            NetworkSwarmCmd::GetCloseGroupLocalPeers { key, .. } => {
                 write!(f, "SwarmCmd::GetCloseGroupLocalPeers {{ key: {key:?} }}")
             }
-            SwarmCmd::GetLocalStoreCost { .. } => {
+            NetworkSwarmCmd::GetLocalStoreCost { .. } => {
                 write!(f, "SwarmCmd::GetLocalStoreCost")
             }
-            SwarmCmd::PaymentReceived => {
+            NetworkSwarmCmd::PaymentReceived => {
                 write!(f, "SwarmCmd::PaymentReceived")
             }
-            SwarmCmd::GetLocalRecord { key, .. } => {
+            NetworkSwarmCmd::GetLocalRecord { key, .. } => {
                 write!(
                     f,
                     "SwarmCmd::GetLocalRecord {{ key: {:?} }}",
                     PrettyPrintRecordKey::from(key)
                 )
             }
-            SwarmCmd::GetAllLocalRecordAddresses { .. } => {
+            NetworkSwarmCmd::GetAllLocalRecordAddresses { .. } => {
                 write!(f, "SwarmCmd::GetAllLocalRecordAddresses")
             }
-            SwarmCmd::GetAllLocalPeers { .. } => {
+            NetworkSwarmCmd::GetAllLocalPeers { .. } => {
                 write!(f, "SwarmCmd::GetAllLocalPeers")
             }
-            SwarmCmd::GetKBuckets { .. } => {
+            NetworkSwarmCmd::GetKBuckets { .. } => {
                 write!(f, "SwarmCmd::GetKBuckets")
             }
-            SwarmCmd::GetSwarmLocalState { .. } => {
+            NetworkSwarmCmd::GetSwarmLocalState { .. } => {
                 write!(f, "SwarmCmd::GetSwarmLocalState")
             }
-            SwarmCmd::RecordStoreHasKey { key, .. } => {
+            NetworkSwarmCmd::RecordStoreHasKey { key, .. } => {
                 write!(
                     f,
                     "SwarmCmd::RecordStoreHasKey {:?}",
                     PrettyPrintRecordKey::from(key)
                 )
             }
-            SwarmCmd::SendResponse { resp, .. } => {
+            NetworkSwarmCmd::SendResponse { resp, .. } => {
                 write!(f, "SwarmCmd::SendResponse resp: {resp:?}")
             }
-            SwarmCmd::SendRequest { req, peer, .. } => {
+            NetworkSwarmCmd::SendRequest { req, peer, .. } => {
                 write!(f, "SwarmCmd::SendRequest req: {req:?}, peer: {peer:?}")
             }
-            SwarmCmd::RecordNodeIssue { peer_id, issue } => {
+            NetworkSwarmCmd::RecordNodeIssue { peer_id, issue } => {
                 write!(
                     f,
                     "SwarmCmd::SendNodeStatus peer {peer_id:?}, issue: {issue:?}"
                 )
             }
-            SwarmCmd::IsPeerShunned { target, .. } => {
+            NetworkSwarmCmd::IsPeerShunned { target, .. } => {
                 write!(f, "SwarmCmd::IsPeerInTrouble target: {target:?}")
             }
-            SwarmCmd::QuoteVerification { quotes } => {
+            NetworkSwarmCmd::QuoteVerification { quotes } => {
                 write!(f, "SwarmCmd::QuoteVerification of {} quotes", quotes.len())
             }
-            SwarmCmd::FetchCompleted(key) => {
+            NetworkSwarmCmd::FetchCompleted(key) => {
                 write!(
                     f,
                     "SwarmCmd::FetchCompleted({:?})",
@@ -320,15 +320,15 @@ pub struct SwarmLocalState {
 }
 
 impl SwarmDriver {
-    pub(crate) fn handle_cmd(&mut self, cmd: SwarmCmd) -> Result<(), NetworkError> {
+    pub(crate) fn handle_cmd(&mut self, cmd: NetworkSwarmCmd) -> Result<(), NetworkError> {
         let start = Instant::now();
         let mut cmd_string;
         match cmd {
-            SwarmCmd::TriggerIntervalReplication => {
+            NetworkSwarmCmd::TriggerIntervalReplication => {
                 cmd_string = "TriggerIntervalReplication";
                 self.try_interval_replication()?;
             }
-            SwarmCmd::GetNetworkRecord { key, sender, cfg } => {
+            NetworkSwarmCmd::GetNetworkRecord { key, sender, cfg } => {
                 cmd_string = "GetNetworkRecord";
                 let query_id = self.swarm.behaviour_mut().kademlia.get_record(key.clone());
 
@@ -355,7 +355,7 @@ impl SwarmDriver {
                 info!("We now have {} pending get record attempts and cached {total_records} fetched copies",
                       self.pending_get_record.len());
             }
-            SwarmCmd::GetLocalStoreCost { key, sender } => {
+            NetworkSwarmCmd::GetLocalStoreCost { key, sender } => {
                 cmd_string = "GetLocalStoreCost";
                 let cost = self
                     .swarm
@@ -370,7 +370,7 @@ impl SwarmDriver {
 
                 let _res = sender.send(cost);
             }
-            SwarmCmd::PaymentReceived => {
+            NetworkSwarmCmd::PaymentReceived => {
                 cmd_string = "PaymentReceived";
                 self.swarm
                     .behaviour_mut()
@@ -378,7 +378,7 @@ impl SwarmDriver {
                     .store_mut()
                     .payment_received();
             }
-            SwarmCmd::GetLocalRecord { key, sender } => {
+            NetworkSwarmCmd::GetLocalRecord { key, sender } => {
                 cmd_string = "GetLocalRecord";
                 let record = self
                     .swarm
@@ -389,7 +389,7 @@ impl SwarmDriver {
                     .map(|rec| rec.into_owned());
                 let _ = sender.send(record);
             }
-            SwarmCmd::PutRecord {
+            NetworkSwarmCmd::PutRecord {
                 record,
                 sender,
                 quorum,
@@ -421,7 +421,7 @@ impl SwarmDriver {
                     error!("Could not send response to PutRecord cmd: {:?}", err);
                 }
             }
-            SwarmCmd::PutRecordTo {
+            NetworkSwarmCmd::PutRecordTo {
                 peers,
                 record,
                 sender,
@@ -445,7 +445,7 @@ impl SwarmDriver {
                     error!("Could not send response to PutRecordTo cmd: {:?}", err);
                 }
             }
-            SwarmCmd::PutLocalRecord { record } => {
+            NetworkSwarmCmd::PutLocalRecord { record } => {
                 cmd_string = "PutLocalRecord";
                 let key = record.key.clone();
                 let record_key = PrettyPrintRecordKey::from(&key);
@@ -534,7 +534,7 @@ impl SwarmDriver {
                     return Err(err.into());
                 };
             }
-            SwarmCmd::AddLocalRecordAsStored { key, record_type } => {
+            NetworkSwarmCmd::AddLocalRecordAsStored { key, record_type } => {
                 info!(
                     "Adding Record locally, for {:?} and {record_type:?}",
                     PrettyPrintRecordKey::from(&key)
@@ -548,7 +548,7 @@ impl SwarmDriver {
                 // Reset counter on any success HDD write.
                 self.hard_disk_write_error = 0;
             }
-            SwarmCmd::RemoveFailedLocalRecord { key } => {
+            NetworkSwarmCmd::RemoveFailedLocalRecord { key } => {
                 info!("Removing Record locally, for {key:?}");
                 cmd_string = "RemoveFailedLocalRecord";
                 self.swarm.behaviour_mut().kademlia.store_mut().remove(&key);
@@ -561,7 +561,7 @@ impl SwarmDriver {
                     });
                 }
             }
-            SwarmCmd::RecordStoreHasKey { key, sender } => {
+            NetworkSwarmCmd::RecordStoreHasKey { key, sender } => {
                 cmd_string = "RecordStoreHasKey";
                 let has_key = self
                     .swarm
@@ -571,7 +571,7 @@ impl SwarmDriver {
                     .contains(&key);
                 let _ = sender.send(has_key);
             }
-            SwarmCmd::GetAllLocalRecordAddresses { sender } => {
+            NetworkSwarmCmd::GetAllLocalRecordAddresses { sender } => {
                 cmd_string = "GetAllLocalRecordAddresses";
                 #[allow(clippy::mutable_key_type)] // for the Bytes in NetworkAddress
                 let addresses = self
@@ -582,7 +582,7 @@ impl SwarmDriver {
                     .record_addresses();
                 let _ = sender.send(addresses);
             }
-            SwarmCmd::Dial { addr, sender } => {
+            NetworkSwarmCmd::Dial { addr, sender } => {
                 cmd_string = "Dial";
 
                 if let Some(peer_id) = multiaddr_pop_p2p(&mut addr.clone()) {
@@ -598,14 +598,14 @@ impl SwarmDriver {
                     Err(e) => sender.send(Err(e.into())),
                 };
             }
-            SwarmCmd::DialWithOpts { opts, sender } => {
+            NetworkSwarmCmd::DialWithOpts { opts, sender } => {
                 cmd_string = "DialWithOpts";
                 let _ = match self.dial_with_opts(opts) {
                     Ok(_) => sender.send(Ok(())),
                     Err(e) => sender.send(Err(e.into())),
                 };
             }
-            SwarmCmd::GetClosestPeersToAddressFromNetwork { key, sender } => {
+            NetworkSwarmCmd::GetClosestPeersToAddressFromNetwork { key, sender } => {
                 cmd_string = "GetClosestPeersToAddressFromNetwork";
                 let query_id = self
                     .swarm
@@ -620,11 +620,11 @@ impl SwarmDriver {
                     ),
                 );
             }
-            SwarmCmd::GetAllLocalPeers { sender } => {
+            NetworkSwarmCmd::GetAllLocalPeers { sender } => {
                 cmd_string = "GetAllLocalPeers";
                 let _ = sender.send(self.get_all_local_peers());
             }
-            SwarmCmd::GetKBuckets { sender } => {
+            NetworkSwarmCmd::GetKBuckets { sender } => {
                 cmd_string = "GetKBuckets";
                 let mut ilog2_kbuckets = BTreeMap::new();
                 for kbucket in self.swarm.behaviour_mut().kademlia.kbuckets() {
@@ -642,7 +642,7 @@ impl SwarmDriver {
                 }
                 let _ = sender.send(ilog2_kbuckets);
             }
-            SwarmCmd::GetCloseGroupLocalPeers { key, sender } => {
+            NetworkSwarmCmd::GetCloseGroupLocalPeers { key, sender } => {
                 cmd_string = "GetCloseGroupLocalPeers";
                 let key = key.as_kbucket_key();
                 // calls `kbuckets.closest_keys(key)` internally, which orders the peers by
@@ -659,11 +659,11 @@ impl SwarmDriver {
 
                 let _ = sender.send(closest_peers);
             }
-            SwarmCmd::GetClosestKLocalPeers { sender } => {
+            NetworkSwarmCmd::GetClosestKLocalPeers { sender } => {
                 cmd_string = "GetClosestKLocalPeers";
                 let _ = sender.send(self.get_closest_k_value_local_peers());
             }
-            SwarmCmd::SendRequest { req, peer, sender } => {
+            NetworkSwarmCmd::SendRequest { req, peer, sender } => {
                 cmd_string = "SendRequest";
                 // If `self` is the recipient, forward the request directly to our upper layer to
                 // be handled.
@@ -692,7 +692,7 @@ impl SwarmDriver {
                     trace!("Pending Requests now: {:?}", self.pending_requests.len());
                 }
             }
-            SwarmCmd::SendResponse { resp, channel } => {
+            NetworkSwarmCmd::SendResponse { resp, channel } => {
                 cmd_string = "SendResponse";
                 match channel {
                     // If the response is for `self`, send it directly through the oneshot channel.
@@ -720,7 +720,7 @@ impl SwarmDriver {
                     }
                 }
             }
-            SwarmCmd::GetSwarmLocalState(sender) => {
+            NetworkSwarmCmd::GetSwarmLocalState(sender) => {
                 cmd_string = "GetSwarmLocalState";
                 let current_state = SwarmLocalState {
                     connected_peers: self.swarm.connected_peers().cloned().collect(),
@@ -732,12 +732,12 @@ impl SwarmDriver {
                     .map_err(|_| NetworkError::InternalMsgChannelDropped)?;
             }
 
-            SwarmCmd::RecordNodeIssue { peer_id, issue } => {
+            NetworkSwarmCmd::RecordNodeIssue { peer_id, issue } => {
                 cmd_string = "RecordNodeIssues";
                 let _ = self.bad_nodes_ongoing_verifications.remove(&peer_id);
                 self.record_node_issue(peer_id, issue);
             }
-            SwarmCmd::IsPeerShunned { target, sender } => {
+            NetworkSwarmCmd::IsPeerShunned { target, sender } => {
                 cmd_string = "IsPeerInTrouble";
                 let is_bad = if let Some(peer_id) = target.as_peer_id() {
                     if let Some((_issues, is_bad)) = self.bad_nodes.get(&peer_id) {
@@ -750,7 +750,7 @@ impl SwarmDriver {
                 };
                 let _ = sender.send(is_bad);
             }
-            SwarmCmd::QuoteVerification { quotes } => {
+            NetworkSwarmCmd::QuoteVerification { quotes } => {
                 cmd_string = "QuoteVerification";
                 for (peer_id, quote) in quotes {
                     // Do nothing if already being bad
@@ -762,7 +762,7 @@ impl SwarmDriver {
                     self.verify_peer_quote(peer_id, quote);
                 }
             }
-            SwarmCmd::FetchCompleted(key) => {
+            NetworkSwarmCmd::FetchCompleted(key) => {
                 info!(
                     "Fetch {:?} early completed, may fetched an old version record.",
                     PrettyPrintRecordKey::from(&key)
