@@ -322,6 +322,11 @@ impl SwarmDriver {
     //          `QueryStats::requests` to be 20 (K-Value)
     //          `QueryStats::success` to be over majority of the requests
     //          `err::NotFound::closest_peers` contains a list of CLOSE_GROUP_SIZE peers
+    //
+    // TODO: if we havent hit the GetRange distance between peers here, we should ask
+    // for closer peers to the farthest peer in the list.
+    // This then allows us to ask for the record from those peers directly?
+    //
     //   2, targeting an existing entry
     //     there will a sequence of (at least CLOSE_GROUP_SIZE) events of
     //     `kad::Event::OutboundQueryProgressed` to be received
@@ -335,13 +340,19 @@ impl SwarmDriver {
     //     where: `cache_candidates`: being the peers supposed to hold the record but not
     //            `ProgressStep::count`: to be `number of received copies plus one`
     //            `ProgressStep::last` to be `true`
+    //
+    //
+    // TODO: only remove and return query as/when we have enough responses from GetRange.
+    // For chunks/registers that can be done relatively fast.
+    // For spends, we'll need to smaple the whole range.
 
     /// Accumulates the GetRecord query results
-    /// If we get enough responses (quorum) for a record with the same content hash:
+    /// If we get enough responses (ie exceed GetRange) for a record with the same content hash:
     /// - we return the Record after comparing with the target record. This might return RecordDoesNotMatch if the
     ///   check fails.
     /// - if multiple content hashes are found, we return a SplitRecord Error
     ///   And then we stop the kad query as we are done here.
+    ///   We do not need to wait for GetRange to be exceeded here and should return early.
     fn accumulate_get_record_found(
         &mut self,
         query_id: QueryId,
@@ -349,6 +360,8 @@ impl SwarmDriver {
         _stats: QueryStats,
         step: ProgressStep,
     ) -> Result<()> {
+        let expected_get_range = self.get_request_range();
+
         let peer_id = if let Some(peer_id) = peer_record.peer {
             peer_id
         } else {
@@ -382,8 +395,7 @@ impl SwarmDriver {
                 };
 
             let expected_answers = get_quorum_value(&cfg.get_quorum);
-
-            trace!("Expecting {expected_answers:?} answers for record {pretty_key:?} task {query_id:?}, received {responded_peers} so far");
+            trace!("Expecting {expected_answers:?} answers within {expected_get_range:?} for record {pretty_key:?} task {query_id:?}, received {responded_peers} so far");
 
             if responded_peers >= expected_answers {
                 if !cfg.expected_holders.is_empty() {
