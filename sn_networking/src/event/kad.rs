@@ -12,12 +12,12 @@ use crate::{
 };
 use itertools::Itertools;
 use libp2p::kad::{
-    self, GetClosestPeersError, InboundRequest, PeerRecord, ProgressStep, QueryId, QueryResult,
-    QueryStats, Record, K_VALUE,
+    self, GetClosestPeersError, InboundRequest, KBucketDistance, PeerRecord, ProgressStep, QueryId,
+    QueryResult, QueryStats, Record, K_VALUE,
 };
 use sn_protocol::{
     storage::{try_serialize_record, RecordKind},
-    PrettyPrintRecordKey,
+    NetworkAddress, PrettyPrintRecordKey,
 };
 use sn_transfers::SignedSpend;
 use std::{
@@ -361,13 +361,13 @@ impl SwarmDriver {
         step: ProgressStep,
     ) -> Result<()> {
         let expected_get_range = self.get_request_range();
-
+        let key = peer_record.record.key.clone();
         let peer_id = if let Some(peer_id) = peer_record.peer {
             peer_id
         } else {
             self.self_peer_id
         };
-        let pretty_key = PrettyPrintRecordKey::from(&peer_record.record.key).into_owned();
+        let pretty_key = PrettyPrintRecordKey::from(&key).into_owned();
 
         if let Entry::Occupied(mut entry) = self.pending_get_record.entry(query_id) {
             let (_sender, result_map, cfg) = entry.get_mut();
@@ -382,20 +382,50 @@ impl SwarmDriver {
 
             // Insert the record and the peer into the result_map.
             let record_content_hash = XorName::from_content(&peer_record.record.value);
-            let responded_peers =
+
+            let peer_list =
                 if let Entry::Occupied(mut entry) = result_map.entry(record_content_hash) {
                     let (_, peer_list) = entry.get_mut();
+
                     let _ = peer_list.insert(peer_id);
-                    peer_list.len()
+                    peer_list.clone()
                 } else {
                     let mut peer_list = HashSet::new();
                     let _ = peer_list.insert(peer_id);
-                    result_map.insert(record_content_hash, (peer_record.record.clone(), peer_list));
-                    1
+                    result_map.insert(
+                        record_content_hash,
+                        (peer_record.record.clone(), peer_list.clone()),
+                    );
+
+                    peer_list
                 };
 
+            let responded_peers = peer_list.len();
+
+            // TODO: With GetRange, do we still need quorum here?
             let expected_answers = get_quorum_value(&cfg.get_quorum);
             trace!("Expecting {expected_answers:?} answers within {expected_get_range:?} for record {pretty_key:?} task {query_id:?}, received {responded_peers} so far");
+
+            let data_key_address = NetworkAddress::from_record_key(&key);
+            // get the farthest distance between peers in the response
+            let mut max_distance = KBucketDistance::default();
+
+            // iterate over peers and see if the distance to the data is greater than the get_range
+            for peer_id in peer_list.iter() {
+                let peer_address = NetworkAddress::from_peer(*peer_id);
+                let distance_to_data = peer_address.distance(&data_key_address);
+                if max_distance < distance_to_data {
+                    max_distance = distance_to_data;
+                }
+            }
+
+            if let Some(range) = expected_get_range {
+                if max_distance < range {
+                    warn!("Not enough of the network has responded, we need to extend the range and PUT the data.");
+
+                    return Ok(());
+                }
+            }
 
             if responded_peers >= expected_answers {
                 if !cfg.expected_holders.is_empty() {
@@ -429,7 +459,7 @@ impl SwarmDriver {
                         let bytes = try_serialize_record(&accumulated_spends, RecordKind::Spend)?;
 
                         let new_accumulated_record = Record {
-                            key: peer_record.record.key,
+                            key,
                             value: bytes.to_vec(),
                             publisher: None,
                             expires: None,
