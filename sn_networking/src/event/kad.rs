@@ -11,9 +11,12 @@ use crate::{
     GetRecordCfg, GetRecordError, NetworkError, Result, SwarmDriver, CLOSE_GROUP_SIZE,
 };
 use itertools::Itertools;
-use libp2p::kad::{
-    self, GetClosestPeersError, InboundRequest, KBucketDistance, PeerRecord, ProgressStep, QueryId,
-    QueryResult, QueryStats, Record, K_VALUE,
+use libp2p::{
+    kad::{
+        self, GetClosestPeersError, InboundRequest, KBucketDistance, PeerRecord, ProgressStep,
+        QueryId, QueryResult, QueryStats, Record, K_VALUE,
+    },
+    PeerId,
 };
 use sn_protocol::{
     storage::{try_serialize_record, RecordKind},
@@ -407,24 +410,14 @@ impl SwarmDriver {
             trace!("Expecting {expected_answers:?} answers within {expected_get_range:?} for record {pretty_key:?} task {query_id:?}, received {responded_peers} so far");
 
             let data_key_address = NetworkAddress::from_record_key(&key);
-            // get the farthest distance between peers in the response
-            let mut max_distance = KBucketDistance::default();
 
-            // iterate over peers and see if the distance to the data is greater than the get_range
-            for peer_id in peer_list.iter() {
-                let peer_address = NetworkAddress::from_peer(*peer_id);
-                let distance_to_data = peer_address.distance(&data_key_address);
-                if max_distance < distance_to_data {
-                    max_distance = distance_to_data;
-                }
-            }
-
-            if let Some(range) = expected_get_range {
-                if max_distance < range {
-                    warn!("Not enough of the network has responded, we need to extend the range and PUT the data.");
-
-                    return Ok(());
-                }
+            if !Self::have_we_have_search_full_get_range(
+                expected_get_range,
+                &peer_list,
+                data_key_address,
+            ) {
+                warn!("Not enough of the network has responded, we need to extend the range and PUT the data.");
+                return Ok(());
             }
 
             if responded_peers >= expected_answers {
@@ -490,6 +483,39 @@ impl SwarmDriver {
             });
         }
         Ok(())
+    }
+
+    /// Checks passed peers from a request and checks they are sufficiently spaced to
+    /// ensure we have searched enough of the network range as determined by our `get_range`
+    fn have_we_have_search_full_get_range(
+        expected_get_range: Option<KBucketDistance>,
+        peer_list: &HashSet<PeerId>,
+        data_key_address: NetworkAddress,
+    ) -> bool {
+        // get the farthest distance between peers in the response
+        let mut max_distance = KBucketDistance::default();
+
+        // iterate over peers and see if the distance to the data is greater than the get_range
+        for peer_id in peer_list.iter() {
+            let peer_address = NetworkAddress::from_peer(*peer_id);
+            let distance_to_data = peer_address.distance(&data_key_address);
+            if max_distance < distance_to_data {
+                max_distance = distance_to_data;
+            }
+        }
+
+        if let Some(expected) = expected_get_range {
+            if max_distance < expected {
+                warn!("INsufficient GetRange searched. {max_distance:?} is less than expcted GetRange of {expected:?}");
+
+                false
+            } else {
+                true
+            }
+        } else {
+            warn!("No GetRange set. Assuming we're in startup phase and allowing search");
+            true
+        }
     }
 
     /// Handles the possible cases when a GetRecord Query completes.
