@@ -416,7 +416,7 @@ impl SwarmDriver {
                 &peer_list,
                 data_key_address,
             ) {
-                warn!("RANGE: {pretty_key:?} Not enough of the network has responded, we need to extend the range and PUT the data.");
+                warn!("RANGE: {pretty_key:?} During accumulate: Not enough of the network has responded, we need to extend the range and PUT the data.");
                 return Ok(());
             }
 
@@ -493,20 +493,23 @@ impl SwarmDriver {
         data_key_address: NetworkAddress,
     ) -> bool {
         // get the farthest distance between peers in the response
-        let mut max_distance = KBucketDistance::default();
+        let mut current_distance_searched = KBucketDistance::default();
 
         // iterate over peers and see if the distance to the data is greater than the get_range
         for peer_id in peer_list.iter() {
             let peer_address = NetworkAddress::from_peer(*peer_id);
             let distance_to_data = peer_address.distance(&data_key_address);
-            if max_distance < distance_to_data {
-                max_distance = distance_to_data;
+            if current_distance_searched < distance_to_data {
+                current_distance_searched = distance_to_data;
             }
         }
 
         if let Some(expected) = expected_get_range {
-            if max_distance < expected {
-                warn!("RANGE: {data_key_address:?} Insufficient GetRange searched. {max_distance:?} is less than expcted GetRange of {expected:?}");
+            if current_distance_searched < expected {
+                let ilog2 = current_distance_searched.ilog2();
+                let expected_ilog2 = expected.ilog2();
+
+                warn!("RANGE: {data_key_address:?} Insufficient GetRange searched. {ilog2:?} {expected_ilog2:?} {current_distance_searched:?} is less than expcted GetRange of {expected:?}");
 
                 false
             } else {
@@ -544,16 +547,26 @@ impl SwarmDriver {
                 let pretty_key = PrettyPrintRecordKey::from(&record.key);
                 // TODO: If we've searched sufficient range
                 let result = if we_have_searched_far_enough && num_of_versions == 1 {
-                    warn!("RANGE: {pretty_key:?} Enough of the network has responded, but only have one copy... we need to PUT the data.");
-                    // TODO: Do we return true here? Or wait until we have re-seeded the data?
-                    Err(GetRecordError::NotEnoughCopies {
-                        record: record.clone(),
-                        expected: get_quorum_value(&cfg.get_quorum),
-                        got: from_peers.len(),
-                    })
+                    warn!("RANGE: {pretty_key:?} Enough of the network has responded, and we only have one copy...");
+
+                    if from_peers.len() < get_quorum_value(&cfg.get_quorum) {
+                        // If we don't have enough copies, we need to reseed the data.
+                        // We can't return here, as we need to reseed the data.
+                        warn!("RANGE: {pretty_key:?} Enough of the network has responded, BUT: we dont have quorum responses we need to reseed the data.");
+                    }
+
+                    // TODO: Do we return already here? Or wait until we have re-seeded the data?
+                    Ok(record.clone())
+
+                    // Err(GetRecordError::NotEnoughCopies {
+                    //     record: record.clone(),
+                    //     expected: get_quorum_value(&cfg.get_quorum),
+                    //     got: from_peers.len(),
+                    // })
                 } else if !we_have_searched_far_enough {
                     // TODO: we don't return here, but reseed this data if valid and research?
-                    warn!("RANGE: {pretty_key:?} Not enough of the network has responded, we need to extend the range and PUT the data.");
+                    // Perhaps dont research, let it be triggered again. Simpler.
+                    warn!("RANGE: {pretty_key:?} Query Finished: Not enough of the network has responded, we need to extend the range and PUT the data.");
 
                     Err(GetRecordError::NotEnoughCopies {
                         record: record.clone(),
