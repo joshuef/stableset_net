@@ -416,7 +416,7 @@ impl SwarmDriver {
                 &peer_list,
                 data_key_address,
             ) {
-                warn!("Not enough of the network has responded, we need to extend the range and PUT the data.");
+                warn!("RANGE: {pretty_key:?} Not enough of the network has responded, we need to extend the range and PUT the data.");
                 return Ok(());
             }
 
@@ -506,7 +506,7 @@ impl SwarmDriver {
 
         if let Some(expected) = expected_get_range {
             if max_distance < expected {
-                warn!("INsufficient GetRange searched. {max_distance:?} is less than expcted GetRange of {expected:?}");
+                warn!("RANGE: {data_key_address:?} Insufficient GetRange searched. {max_distance:?} is less than expcted GetRange of {expected:?}");
 
                 false
             } else {
@@ -532,7 +532,29 @@ impl SwarmDriver {
             let (result, log_string) = if let Some((record, from_peers)) =
                 result_map.values().next()
             {
-                let result = if num_of_versions == 1 {
+                let data_key_address = NetworkAddress::from_record_key(&record.key);
+                let expected_get_range = self.get_request_range();
+
+                let we_have_searched_far_enough = !Self::have_we_have_search_full_get_range(
+                    expected_get_range,
+                    from_peers,
+                    data_key_address,
+                );
+
+                let pretty_key = PrettyPrintRecordKey::from(&record.key);
+                // TODO: If we've searched sufficient range
+                let result = if we_have_searched_far_enough && num_of_versions == 1 {
+                    warn!("RANGE: {pretty_key:?} Enough of the network has responded, but only have one copy... we need to PUT the data.");
+                    // TODO: Do we return true here? Or wait until we have re-seeded the data?
+                    Err(GetRecordError::NotEnoughCopies {
+                        record: record.clone(),
+                        expected: get_quorum_value(&cfg.get_quorum),
+                        got: from_peers.len(),
+                    })
+                } else if !we_have_searched_far_enough {
+                    // TODO: we don't return here, but reseed this data if valid and research?
+                    warn!("RANGE: {pretty_key:?} Not enough of the network has responded, we need to extend the range and PUT the data.");
+
                     Err(GetRecordError::NotEnoughCopies {
                         record: record.clone(),
                         expected: get_quorum_value(&cfg.get_quorum),
@@ -550,6 +572,7 @@ impl SwarmDriver {
                     PrettyPrintRecordKey::from(&record.key), usize::from(step.count) - 1)
                 )
             } else {
+                // TODO: If we've saerched far enough!
                 (
                 Err(GetRecordError::RecordNotFound),
                 format!("Getting record task {query_id:?} completed with step count {:?}, but no copy found.", step.count),
