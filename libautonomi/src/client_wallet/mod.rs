@@ -1,4 +1,7 @@
-use eyre::eyre;
+pub mod error;
+
+use crate::client_wallet::error::TransferError;
+use crate::client_wallet::error::{CashNoteError, SendSpendsError};
 use libp2p::{
     futures::future::join_all,
     kad::{Quorum, Record},
@@ -8,69 +11,21 @@ use sn_client::{
     networking::{
         GetRecordCfg, GetRecordError, Network, NetworkError, PutRecordCfg, VerificationKind,
     },
-    transfers::{HotWallet, SignedSpend, UniquePubkey},
+    transfers::{HotWallet, SignedSpend},
 };
 use sn_protocol::{
     storage::{try_serialize_record, RecordKind, RetryStrategy, SpendAddress},
     NetworkAddress, PrettyPrintRecordKey,
 };
-use sn_transfers::{MainPubkey, NanoTokens, Payment, SpendReason, Transfer};
+use sn_transfers::{Payment, Transfer};
 use xor_name::XorName;
 
 use crate::wallet::MemWallet;
 use crate::{Client, VERIFY_STORE};
-use sn_transfers::{CashNote, WalletError};
+use sn_transfers::CashNote;
 use std::collections::{BTreeSet, HashSet};
 
-#[derive(Debug, thiserror::Error)]
-pub enum SendSpendsError {
-    /// The cashnotes that were attempted to be spent have already been spent to another address
-    #[error("Double spend attempted with cashnotes: {0:?}")]
-    DoubleSpendAttemptedForCashNotes(BTreeSet<UniquePubkey>),
-    /// A general error when a transfer fails
-    #[error("Failed to send tokens due to {0}")]
-    CouldNotSendMoney(String),
-}
-
 impl Client {
-    /// Creates a `Transfer` that can be received by the receiver.
-    /// Once received, it will be turned into a `CashNote` that the receiver can spend.
-    pub async fn send(
-        &mut self,
-        to: MainPubkey,
-        amount_in_nano: NanoTokens,
-        reason: Option<SpendReason>,
-        wallet: &mut MemWallet,
-    ) -> eyre::Result<Transfer> {
-        let offline_transfer =
-            wallet.create_offline_transfer(vec![(amount_in_nano, to)], reason)?;
-
-        // return the first CashNote (assuming there is only one because we only sent to one recipient)
-        let cash_note_for_recipient = match &offline_transfer.cash_notes_for_recipient[..] {
-            [cash_note] => Ok(cash_note),
-            [_multiple, ..] => Err(SendSpendsError::CouldNotSendMoney(
-                "Multiple CashNotes were returned from the transaction when only one was expected."
-                    .into(),
-            )),
-            [] => Err(SendSpendsError::CouldNotSendMoney(
-                "No CashNotes were returned from the wallet.".into(),
-            )),
-        }?;
-
-        let transfer = Transfer::transfer_from_cash_note(cash_note_for_recipient)?;
-
-        self.send_spends(offline_transfer.all_spend_requests.iter())
-            .await?;
-
-        wallet.process_offline_transfer(offline_transfer.clone());
-
-        for spend in &offline_transfer.all_spend_requests {
-            wallet.add_pending_spend(spend.clone());
-        }
-
-        Ok(transfer)
-    }
-
     /// Send spend requests to the network.
     pub async fn send_spends(
         &self,
@@ -163,11 +118,12 @@ impl Client {
     /// Deposits all valid `CashNotes` from a transfer into a wallet.
     pub(super) async fn receive_transfer(
         &self,
-        transfer_hex: &str,
+        transfer: Transfer,
         wallet: &mut MemWallet,
-    ) -> eyre::Result<()> {
-        let transfer = Transfer::from_hex(&transfer_hex)?;
-        let cash_note_redemptions = wallet.unwrap_transfer(&transfer)?;
+    ) -> Result<(), TransferError> {
+        let cash_note_redemptions = wallet
+            .unwrap_transfer(&transfer)
+            .map_err(|err| TransferError::WalletError(err))?;
 
         let cash_notes = self
             .network
@@ -190,7 +146,7 @@ impl Client {
     pub(super) async fn verify_if_cash_note_is_valid(
         &self,
         cash_note: &CashNote,
-    ) -> eyre::Result<()> {
+    ) -> Result<(), CashNoteError> {
         let pk = cash_note.unique_pubkey();
         let addr = SpendAddress::from_unique_pubkey(&pk);
 
@@ -198,9 +154,9 @@ impl Client {
             // if we get a RecordNotFound, it means the CashNote is not spent, which is good
             Err(NetworkError::GetRecordError(GetRecordError::RecordNotFound)) => Ok(()),
             // if we get a spend, it means the CashNote is already spent
-            Ok(_) => Err(eyre!("CashNote is already spent")),
+            Ok(_) => Err(CashNoteError::AlreadySpent),
             // report all other errors
-            Err(e) => return Err(WalletError::FailedToGetSpend(format!("{e}")).into()),
+            Err(e) => return Err(CashNoteError::FailedToGetSpend(format!("{e}")).into()),
         }
     }
 

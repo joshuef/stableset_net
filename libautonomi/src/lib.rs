@@ -18,6 +18,9 @@ mod client {
         time::Duration,
     };
 
+    use crate::client_wallet::error::SendSpendsError;
+    use crate::self_encryption::{encrypt, DataMapLevel};
+    use crate::wallet::MemWallet;
     use bytes::Bytes;
     use libp2p::{
         identity::Keypair,
@@ -40,18 +43,13 @@ mod client {
         },
         NetworkAddress,
     };
-    use sn_transfers::Payment;
+    use sn_transfers::{Payment, SpendReason, Transfer};
     use tokio::{
         sync::mpsc::Receiver,
         task::{JoinError, JoinSet},
         time::interval,
     };
     use xor_name::XorName;
-
-    use crate::{
-        client_wallet::SendSpendsError,
-        self_encryption::{encrypt, DataMapLevel},
-    };
 
     #[derive(Debug, thiserror::Error)]
     pub enum PutError {
@@ -91,6 +89,40 @@ mod client {
         TimedOutWithIncompatibleProtocol(HashSet<String>, String),
         #[error("Could not connect to enough peers in time.")]
         TimedOut,
+    }
+
+    #[derive(Debug, thiserror::Error)]
+    pub enum SendError {
+        #[error("CashNote amount unexpected: {0}")]
+        CashNoteAmountUnexpected(String),
+        #[error("CashNote has no parent spends.")]
+        CashNoteHasNoParentSpends,
+        #[error("Wallet error: {0:?}")]
+        WalletError(#[from] crate::wallet::error::WalletError),
+        #[error("Transfer error: {0:?}")]
+        TransferError(#[from] sn_transfers::TransferError),
+        #[error("Spends error: {0:?}")]
+        SpendsError(#[from] SendSpendsError),
+    }
+
+    #[derive(Debug, thiserror::Error)]
+    pub enum ReceiveError {
+        #[error("Could not deserialize `Transfer`.")]
+        TransferDeserializationFailed,
+        #[error("Transfer error: {0:?}")]
+        TransferError(String),
+    }
+
+    impl From<sn_transfers::TransferError> for ReceiveError {
+        fn from(error: sn_transfers::TransferError) -> Self {
+            ReceiveError::TransferError(format!("{error:?}"))
+        }
+    }
+
+    impl From<crate::client_wallet::error::TransferError> for ReceiveError {
+        fn from(error: crate::client_wallet::error::TransferError) -> Self {
+            ReceiveError::TransferError(format!("{error:?}"))
+        }
     }
 
     #[derive(Clone)]
@@ -144,6 +176,44 @@ mod client {
             receiver.await.expect("sender should not close")?;
 
             Ok(Self { network })
+        }
+
+        /// Creates a `Transfer` that can be received by the receiver.
+        /// Once received, it will be turned into a `CashNote` that the receiver can spend.
+        pub async fn send(
+            &mut self,
+            to: MainPubkey,
+            amount_in_nano: NanoTokens,
+            reason: Option<SpendReason>,
+            wallet: &mut MemWallet,
+        ) -> Result<Transfer, SendError> {
+            let offline_transfer =
+                wallet.create_offline_transfer(vec![(amount_in_nano, to)], reason)?;
+
+            // return the first CashNote (assuming there is only one because we only sent to one recipient)
+            let cash_note_for_recipient = match &offline_transfer.cash_notes_for_recipient[..] {
+                [cash_note] => Ok(cash_note),
+                [_multiple, ..] => Err(SendError::CashNoteAmountUnexpected(
+                    "Got multiple, expected 1.".into(),
+                )),
+                [] => Err(SendError::CashNoteAmountUnexpected(
+                    "Got 0, expected 1.".into(),
+                )),
+            }?;
+
+            let transfer = Transfer::transfer_from_cash_note(cash_note_for_recipient)
+                .map_err(|err| SendError::TransferError(err))?;
+
+            self.send_spends(offline_transfer.all_spend_requests.iter())
+                .await?;
+
+            wallet.process_offline_transfer(offline_transfer.clone());
+
+            for spend in &offline_transfer.all_spend_requests {
+                wallet.add_pending_spend(spend.clone());
+            }
+
+            Ok(transfer)
         }
 
         async fn fetch_from_data_map(&self, data_map: &DataMap) -> Result<Bytes, GetError> {
@@ -215,6 +285,19 @@ mod client {
             } else {
                 Err(NetworkError::RecordKindMismatch(RecordKind::Chunk).into())
             }
+        }
+
+        /// Receive a `CashNoteRedemption` through a transfer message.
+        pub async fn receive(
+            &self,
+            transfer_hex: &str,
+            wallet: &mut MemWallet,
+        ) -> Result<(), ReceiveError> {
+            let transfer = Transfer::from_hex(&transfer_hex)
+                .map_err(|_| ReceiveError::TransferDeserializationFailed)?;
+            self.receive_transfer(transfer, wallet)
+                .await
+                .map_err(ReceiveError::from)
         }
 
         pub async fn put(
