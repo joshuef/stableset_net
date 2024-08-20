@@ -10,6 +10,7 @@ use crate::{
     driver::{PendingGetClosestType, SwarmDriver},
     error::{NetworkError, Result},
     event::TerminateNodeReason,
+    log_markers::Marker,
     multiaddr_pop_p2p, GetRecordCfg, GetRecordError, MsgResponder, NetworkEvent, CLOSE_GROUP_SIZE,
     REPLICATION_PEERS_COUNT,
 };
@@ -109,6 +110,10 @@ pub enum LocalSwarmCmd {
         key: RecordKey,
         record_type: RecordType,
     },
+    /// Add a peer to the blocklist
+    AddPeerToBlockList {
+        peer_id: PeerId,
+    },
     /// Notify whether peer is in trouble
     RecordNodeIssue {
         peer_id: PeerId,
@@ -128,6 +133,8 @@ pub enum LocalSwarmCmd {
     /// Triggers interval repliation
     /// NOTE: This does result in outgoing messages, but is produced locally
     TriggerIntervalReplication,
+    /// Triggers unrelevant record cleanup
+    TriggerUnrelevantRecordCleanup,
 }
 
 /// Commands to send to the Swarm
@@ -247,7 +254,9 @@ impl Debug for LocalSwarmCmd {
                     PrettyPrintRecordKey::from(key)
                 )
             }
-
+            LocalSwarmCmd::AddPeerToBlockList { peer_id } => {
+                write!(f, "LocalSwarmCmd::AddPeerToBlockList {peer_id:?}")
+            }
             LocalSwarmCmd::RecordNodeIssue { peer_id, issue } => {
                 write!(
                     f,
@@ -273,6 +282,9 @@ impl Debug for LocalSwarmCmd {
             }
             LocalSwarmCmd::TriggerIntervalReplication => {
                 write!(f, "LocalSwarmCmd::TriggerIntervalReplication")
+            }
+            LocalSwarmCmd::TriggerUnrelevantRecordCleanup => {
+                write!(f, "LocalSwarmCmd::TriggerUnrelevantRecordCleanup")
             }
         }
     }
@@ -541,18 +553,19 @@ impl SwarmDriver {
             }
             LocalSwarmCmd::GetLocalStoreCost { key, sender } => {
                 cmd_string = "GetLocalStoreCost";
-                let cost = self
+                let (cost, quoting_metrics) = self
                     .swarm
                     .behaviour_mut()
                     .kademlia
                     .store_mut()
                     .store_cost(&key);
-                #[cfg(feature = "open-metrics")]
-                if let Some(metrics) = &self.network_metrics {
-                    let _ = metrics.store_cost.set(cost.0.as_nano() as i64);
-                }
 
-                let _res = sender.send(cost);
+                self.record_metrics(Marker::StoreCost {
+                    cost: cost.as_nano(),
+                    quoting_metrics: &quoting_metrics,
+                });
+
+                let _res = sender.send((cost, quoting_metrics));
             }
             LocalSwarmCmd::PaymentReceived => {
                 cmd_string = "PaymentReceived";
@@ -763,7 +776,10 @@ impl SwarmDriver {
                     .send(current_state)
                     .map_err(|_| NetworkError::InternalMsgChannelDropped)?;
             }
-
+            LocalSwarmCmd::AddPeerToBlockList { peer_id } => {
+                cmd_string = "AddPeerToBlockList";
+                self.swarm.behaviour_mut().blocklist.block_peer(peer_id);
+            }
             LocalSwarmCmd::RecordNodeIssue { peer_id, issue } => {
                 cmd_string = "RecordNodeIssues";
                 self.record_node_issue(peer_id, issue);
@@ -805,6 +821,14 @@ impl SwarmDriver {
                 if !new_keys_to_fetch.is_empty() {
                     self.send_event(NetworkEvent::KeysToFetchForReplication(new_keys_to_fetch));
                 }
+            }
+            LocalSwarmCmd::TriggerUnrelevantRecordCleanup => {
+                cmd_string = "TriggerUnrelevantRecordCleanup";
+                self.swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .store_mut()
+                    .cleanup_unrelevant_records();
             }
         }
 
@@ -862,17 +886,45 @@ impl SwarmDriver {
         }
 
         if *is_bad {
-            warn!("Cleaning out bad_peer {peer_id:?} and adding it to the blocklist");
+            warn!("Cleaning out bad_peer {peer_id:?}. Will be added to the blocklist after informing that peer.");
             if let Some(dead_peer) = self.swarm.behaviour_mut().kademlia.remove_peer(&peer_id) {
                 self.update_on_peer_removal(*dead_peer.node.key.preimage());
             }
-            self.swarm.behaviour_mut().blocklist.block_peer(peer_id);
 
             if is_new_bad {
-                self.send_event(NetworkEvent::PeerConsideredAsBad {
-                    detected_by: self.self_peer_id,
-                    bad_peer: peer_id,
+                self.record_metrics(Marker::PeerConsideredAsBad { bad_peer: &peer_id });
+                // inform the bad node about it and add to the blocklist after that.
+
+                // response handling
+                let (tx, rx) = oneshot::channel();
+                let local_swarm_cmd_sender = self.local_cmd_sender.clone();
+                tokio::spawn(async move {
+                    match rx.await {
+                        Ok(result) => {
+                            debug!("Got response for Cmd::PeerConsideredAsBad from {peer_id:?} {result:?}");
+                            if let Err(err) = local_swarm_cmd_sender
+                                .send(LocalSwarmCmd::AddPeerToBlockList { peer_id })
+                                .await
+                            {
+                                error!("SwarmDriver failed to send LocalSwarmCmd: {err}");
+                            }
+                        }
+                        Err(err) => {
+                            error!("Failed to get response from one shot channel for Cmd::PeerConsideredAsBad : {err:?}");
+                        }
+                    }
+                });
+
+                // request
+                let request = Request::Cmd(Cmd::PeerConsideredAsBad {
+                    detected_by: NetworkAddress::from_peer(self.self_peer_id),
+                    bad_peer: NetworkAddress::from_peer(peer_id),
                     bad_behaviour,
+                });
+                self.queue_network_swarm_cmd(NetworkSwarmCmd::SendRequest {
+                    req: request,
+                    peer: peer_id,
+                    sender: Some(tx),
                 });
             }
         }

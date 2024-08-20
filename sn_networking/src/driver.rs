@@ -7,7 +7,7 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 
 #[cfg(feature = "open-metrics")]
-use crate::metrics::NetworkMetrics;
+use crate::metrics::NetworkMetricsRecorder;
 #[cfg(feature = "open-metrics")]
 use crate::metrics_service::run_metrics_server;
 use crate::{
@@ -16,6 +16,7 @@ use crate::{
     cmd::{LocalSwarmCmd, NetworkSwarmCmd},
     error::{NetworkError, Result},
     event::{NetworkEvent, NodeEvent},
+    log_markers::Marker,
     multiaddr_pop_p2p,
     network_discovery::NetworkDiscovery,
     record_store::{ClientRecordStore, NodeRecordStore, NodeRecordStoreConfig},
@@ -48,7 +49,7 @@ use libp2p::{
     Multiaddr, PeerId,
 };
 #[cfg(feature = "open-metrics")]
-use prometheus_client::registry::Registry;
+use prometheus_client::{metrics::info::Info, registry::Registry};
 use sn_protocol::{
     messages::{ChunkProof, Nonce, Request, Response},
     storage::RetryStrategy,
@@ -215,9 +216,10 @@ pub struct NetworkBuilder {
     concurrency_limit: Option<usize>,
     initial_peers: Vec<Multiaddr>,
     #[cfg(feature = "open-metrics")]
+    metrics_metadata_registry: Option<Registry>,
+    #[cfg(feature = "open-metrics")]
     metrics_registry: Option<Registry>,
     #[cfg(feature = "open-metrics")]
-    /// Set to Some to enable the metrics server
     metrics_server_port: Option<u16>,
     #[cfg(feature = "upnp")]
     upnp: bool,
@@ -234,6 +236,8 @@ impl NetworkBuilder {
             request_timeout: None,
             concurrency_limit: None,
             initial_peers: Default::default(),
+            #[cfg(feature = "open-metrics")]
+            metrics_metadata_registry: None,
             #[cfg(feature = "open-metrics")]
             metrics_registry: None,
             #[cfg(feature = "open-metrics")]
@@ -263,12 +267,22 @@ impl NetworkBuilder {
         self.initial_peers = initial_peers;
     }
 
+    /// Set the Registry that will be served at the `/metadata` endpoint. This Registry should contain only the static
+    /// info about the peer. Configure the `metrics_server_port` to enable the metrics server.
     #[cfg(feature = "open-metrics")]
-    pub fn metrics_registry(&mut self, metrics_registry: Option<Registry>) {
-        self.metrics_registry = metrics_registry;
+    pub fn metrics_metadata_registry(&mut self, metrics_metadata_registry: Registry) {
+        self.metrics_metadata_registry = Some(metrics_metadata_registry);
+    }
+
+    /// Set the Registry that will be served at the `/metrics` endpoint.
+    /// Configure the `metrics_server_port` to enable the metrics server.
+    #[cfg(feature = "open-metrics")]
+    pub fn metrics_registry(&mut self, metrics_registry: Registry) {
+        self.metrics_registry = Some(metrics_registry);
     }
 
     #[cfg(feature = "open-metrics")]
+    /// The metrics server is enabled only if the port is provided.
     pub fn metrics_server_port(&mut self, port: Option<u16>) {
         self.metrics_server_port = port;
     }
@@ -430,11 +444,62 @@ impl NetworkBuilder {
         );
 
         #[cfg(feature = "open-metrics")]
+        let mut metrics_registry = self.metrics_registry.unwrap_or_default();
+
+        // ==== Transport ====
+        #[cfg(feature = "open-metrics")]
+        let main_transport = transport::build_transport(&self.keypair, &mut metrics_registry);
+        #[cfg(not(feature = "open-metrics"))]
+        let main_transport = transport::build_transport(&self.keypair);
+        let transport = if !self.local {
+            debug!("Preventing non-global dials");
+            // Wrap upper in a transport that prevents dialing local addresses.
+            libp2p::core::transport::global_only::Transport::new(main_transport).boxed()
+        } else {
+            main_transport
+        };
+
+        let (relay_transport, relay_behaviour) =
+            libp2p::relay::client::new(self.keypair.public().to_peer_id());
+        let relay_transport = relay_transport
+            .upgrade(libp2p::core::upgrade::Version::V1Lazy)
+            .authenticate(
+                libp2p::noise::Config::new(&self.keypair)
+                    .expect("Signing libp2p-noise static DH keypair failed."),
+            )
+            .multiplex(libp2p::yamux::Config::default())
+            .or_transport(transport);
+
+        let transport = relay_transport
+            .map(|either_output, _| match either_output {
+                Either::Left((peer_id, muxer)) => (peer_id, StreamMuxerBox::new(muxer)),
+                Either::Right((peer_id, muxer)) => (peer_id, StreamMuxerBox::new(muxer)),
+            })
+            .boxed();
+
+        #[cfg(feature = "open-metrics")]
         let network_metrics = if let Some(port) = self.metrics_server_port {
-            let mut metrics_registry = self.metrics_registry.unwrap_or_default();
-            let metrics = NetworkMetrics::new(&mut metrics_registry);
-            run_metrics_server(metrics_registry, port);
-            Some(metrics)
+            let network_metrics = NetworkMetricsRecorder::new(&mut metrics_registry);
+            let mut metadata_registry = self.metrics_metadata_registry.unwrap_or_default();
+            let network_metadata_sub_registry =
+                metadata_registry.sub_registry_with_prefix("sn_networking");
+
+            network_metadata_sub_registry.register(
+                "peer_id",
+                "Identifier of a peer of the network",
+                Info::new(vec![("peer_id".to_string(), peer_id.to_string())]),
+            );
+            network_metadata_sub_registry.register(
+                "identify_protocol_str",
+                "The protocol version string that is used to connect to the correct network",
+                Info::new(vec![(
+                    "identify_protocol_str".to_string(),
+                    IDENTIFY_PROTOCOL_STR.to_string(),
+                )]),
+            );
+
+            run_metrics_server(metrics_registry, metadata_registry, port);
+            Some(network_metrics)
         } else {
             None
         };
@@ -518,16 +583,6 @@ impl NetworkBuilder {
             libp2p::identify::Behaviour::new(cfg)
         };
 
-        let main_transport = transport::build_transport(&self.keypair);
-
-        let transport = if !self.local {
-            debug!("Preventing non-global dials");
-            // Wrap upper in a transport that prevents dialing local addresses.
-            libp2p::core::transport::global_only::Transport::new(main_transport).boxed()
-        } else {
-            main_transport
-        };
-
         #[cfg(feature = "upnp")]
         let upnp = if !self.local && !is_client && upnp {
             debug!("Enabling UPnP port opening behavior");
@@ -536,24 +591,6 @@ impl NetworkBuilder {
             None
         }
         .into(); // Into `Toggle<T>`
-
-        let (relay_transport, relay_behaviour) =
-            libp2p::relay::client::new(self.keypair.public().to_peer_id());
-        let relay_transport = relay_transport
-            .upgrade(libp2p::core::upgrade::Version::V1Lazy)
-            .authenticate(
-                libp2p::noise::Config::new(&self.keypair)
-                    .expect("Signing libp2p-noise static DH keypair failed."),
-            )
-            .multiplex(libp2p::yamux::Config::default())
-            .or_transport(transport);
-
-        let transport = relay_transport
-            .map(|either_output, _| match either_output {
-                Either::Left((peer_id, muxer)) => (peer_id, StreamMuxerBox::new(muxer)),
-                Either::Right((peer_id, muxer)) => (peer_id, StreamMuxerBox::new(muxer)),
-            })
-            .boxed();
 
         let relay_server = {
             let relay_server_cfg = relay::Config {
@@ -612,6 +649,7 @@ impl NetworkBuilder {
             // and not block the processing thread unintentionally
             network_cmd_sender: network_swarm_cmd_sender.clone(),
             network_cmd_receiver: network_swarm_cmd_receiver,
+            local_cmd_sender: local_swarm_cmd_sender.clone(),
             local_cmd_receiver: local_swarm_cmd_receiver,
             event_sender: network_event_sender,
             pending_get_closest_peers: Default::default(),
@@ -658,9 +696,10 @@ pub struct SwarmDriver {
     /// The peers that are closer to our PeerId. Includes self.
     pub(crate) replication_fetcher: ReplicationFetcher,
     #[cfg(feature = "open-metrics")]
-    pub(crate) network_metrics: Option<NetworkMetrics>,
+    pub(crate) network_metrics: Option<NetworkMetricsRecorder>,
 
     network_cmd_sender: mpsc::Sender<NetworkSwarmCmd>,
+    pub(crate) local_cmd_sender: mpsc::Sender<LocalSwarmCmd>,
     local_cmd_receiver: mpsc::Receiver<LocalSwarmCmd>,
     network_cmd_receiver: mpsc::Receiver<NetworkSwarmCmd>,
     event_sender: mpsc::Sender<NetworkEvent>, // Use `self.send_event()` to send a NetworkEvent.
@@ -912,6 +951,16 @@ impl SwarmDriver {
             trace!("SwarmDriver Handling Statistics: {:?}", stats);
             // now we've logged, lets clear the stats from the btreemap
             self.handling_statistics.clear();
+        }
+    }
+
+    /// Calls Marker::log() to insert the marker into the log files.
+    /// Also calls NodeMetrics::record() to record the metric if the `open-metrics` feature flag is enabled.
+    pub(crate) fn record_metrics(&self, marker: Marker) {
+        marker.log();
+        #[cfg(feature = "open-metrics")]
+        if let Some(network_metrics) = self.network_metrics.as_ref() {
+            network_metrics.record_from_marker(marker)
         }
     }
 

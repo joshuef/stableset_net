@@ -13,23 +13,23 @@ use super::{
     Marker, NodeEvent,
 };
 #[cfg(feature = "open-metrics")]
-use crate::metrics::NodeMetrics;
+use crate::metrics::NodeMetricsRecorder;
 use crate::RunningNode;
 use bytes::Bytes;
 use libp2p::{identity::Keypair, Multiaddr, PeerId};
 #[cfg(feature = "open-metrics")]
-use prometheus_client::metrics::gauge::Gauge;
+use prometheus_client::metrics::{gauge::Gauge, info::Info};
 #[cfg(feature = "open-metrics")]
 use prometheus_client::registry::Registry;
 use rand::{rngs::StdRng, thread_rng, Rng, SeedableRng};
 use sn_networking::{
     close_group_majority, Instant, Network, NetworkBuilder, NetworkError, NetworkEvent, NodeIssue,
-    SwarmDriver, CLOSE_GROUP_SIZE,
+    SwarmDriver,
 };
 use sn_protocol::{
     error::Error as ProtocolError,
-    messages::{ChunkProof, Cmd, CmdResponse, Query, QueryResponse, Request, Response},
-    NetworkAddress, PrettyPrintRecordKey,
+    messages::{ChunkProof, CmdResponse, Query, QueryResponse, Request, Response},
+    NetworkAddress, PrettyPrintRecordKey, CLOSE_GROUP_SIZE,
 };
 use sn_transfers::{HotWallet, MainPubkey, MainSecretKey, NanoTokens, PAYMENT_FORWARD_PK};
 use std::{
@@ -78,6 +78,9 @@ const FORWARDED_BALANCE_FILE_NAME: &str = "forwarded_balance";
 
 /// Interval to update the nodes uptime metric
 const UPTIME_METRICS_UPDATE_INTERVAL: Duration = Duration::from_secs(10);
+
+/// Interval to clean up unrelevant records
+const UNRELEVANT_RECORDS_CLEANUP_INTERVAL: Duration = Duration::from_secs(3600);
 
 /// Helper to build and run a Node
 pub struct NodeBuilder {
@@ -155,20 +158,34 @@ impl NodeBuilder {
         // store in case it's a fresh wallet created if none was found
         wallet.deposit_and_store_to_disk(&vec![])?;
 
-        #[cfg(feature = "open-metrics")]
-        let (metrics_registry, node_metrics) = if self.metrics_server_port.is_some() {
-            let mut metrics_registry = Registry::default();
-            let node_metrics = NodeMetrics::new(&mut metrics_registry);
-            (Some(metrics_registry), Some(node_metrics))
-        } else {
-            (None, None)
-        };
-
         let mut network_builder = NetworkBuilder::new(self.keypair, self.local, self.root_dir);
 
-        network_builder.listen_addr(self.addr);
         #[cfg(feature = "open-metrics")]
-        network_builder.metrics_registry(metrics_registry);
+        let node_metrics = if self.metrics_server_port.is_some() {
+            // metadata registry
+            let mut metadata_registry = Registry::default();
+            let node_metadata_sub_registry = metadata_registry.sub_registry_with_prefix("sn_node");
+            node_metadata_sub_registry.register(
+                "safenode_version",
+                "The version of the safe node",
+                Info::new(vec![(
+                    "safenode_version".to_string(),
+                    env!("CARGO_PKG_VERSION").to_string(),
+                )]),
+            );
+            network_builder.metrics_metadata_registry(metadata_registry);
+
+            // metrics registry
+            let mut metrics_registry = Registry::default();
+            let node_metrics = NodeMetricsRecorder::new(&mut metrics_registry);
+            network_builder.metrics_registry(metrics_registry);
+
+            Some(node_metrics)
+        } else {
+            None
+        };
+
+        network_builder.listen_addr(self.addr);
         #[cfg(feature = "open-metrics")]
         network_builder.metrics_server_port(self.metrics_server_port);
         network_builder.initial_peers(self.initial_peers.clone());
@@ -220,7 +237,7 @@ struct NodeInner {
     initial_peers: Vec<Multiaddr>,
     network: Network,
     #[cfg(feature = "open-metrics")]
-    node_metrics: Option<NodeMetrics>,
+    node_metrics: Option<NodeMetricsRecorder>,
     /// Node owner's discord username, in readable format
     /// If not set, there will be no payment forward to be undertaken
     owner: Option<String>,
@@ -245,7 +262,7 @@ impl Node {
 
     #[cfg(feature = "open-metrics")]
     /// Returns a reference to the NodeMetrics if the `open-metrics` feature flag is enabled
-    pub(crate) fn node_metrics(&self) -> Option<&NodeMetrics> {
+    pub(crate) fn node_metrics(&self) -> Option<&NodeMetricsRecorder> {
         self.inner.node_metrics.as_ref()
     }
 
@@ -323,6 +340,10 @@ impl Node {
                 tokio::time::interval(UPTIME_METRICS_UPDATE_INTERVAL);
             let _ = uptime_metrics_update_interval.tick().await; // first tick completes immediately
 
+            let mut unrelevant_records_cleanup_interval =
+                tokio::time::interval(UNRELEVANT_RECORDS_CLEANUP_INTERVAL);
+            let _ = unrelevant_records_cleanup_interval.tick().await; // first tick completes immediately
+
             loop {
                 let peers_connected = &peers_connected;
 
@@ -385,13 +406,19 @@ impl Node {
 
                                 #[cfg(feature = "open-metrics")]
                                 let total_forwarded_rewards = self.node_metrics().map(|metrics|metrics.total_forwarded_rewards.clone());
+                                #[cfg(feature = "open-metrics")]
+                                let current_reward_wallet_balance = self.node_metrics().map(|metrics|metrics.current_reward_wallet_balance.clone());
 
                                 let _handle = spawn(async move {
 
                                     #[cfg(feature = "open-metrics")]
-                                    let _ = Self::try_forward_balance(network, forwarding_reason, total_forwarded_rewards);
+                                    if let Err(err) =  Self::try_forward_balance(network, forwarding_reason, total_forwarded_rewards,current_reward_wallet_balance) {
+                                        error!("Error while trying to forward balance: {err:?}");
+                                    }
                                     #[cfg(not(feature = "open-metrics"))]
-                                    let _ = Self::try_forward_balance(network, forwarding_reason);
+                                    if let Err(err) = Self::try_forward_balance(network, forwarding_reason) {
+                                        error!("Error while trying to forward balance: {err:?}");
+                                    }
                                     info!("Periodic balance forward took {:?}", start.elapsed());
                                 });
                             }
@@ -403,6 +430,13 @@ impl Node {
                         if let Some(node_metrics) = self.node_metrics() {
                             let _ = node_metrics.uptime.set(node_metrics.started_instant.elapsed().as_secs() as i64);
                         }
+                    }
+                    _ = unrelevant_records_cleanup_interval.tick() => {
+                        let network = self.network().clone();
+
+                        let _handle = spawn(async move {
+                            Self::trigger_unrelevant_record_cleanup(network);
+                        });
                     }
                 }
             }
@@ -462,29 +496,6 @@ impl Node {
             }
             NetworkEvent::PeerWithUnsupportedProtocol { .. } => {
                 event_header = "PeerWithUnsupportedProtocol";
-            }
-            NetworkEvent::PeerConsideredAsBad {
-                detected_by,
-                bad_peer,
-                bad_behaviour,
-            } => {
-                event_header = "PeerConsideredAsBad";
-                self.record_metrics(Marker::PeerConsideredAsBad(&bad_peer));
-
-                let request = Request::Cmd(Cmd::PeerConsideredAsBad {
-                    detected_by: NetworkAddress::from_peer(detected_by),
-                    bad_peer: NetworkAddress::from_peer(bad_peer),
-                    bad_behaviour,
-                });
-
-                let network = self.network().clone();
-                let _handle = spawn(async move {
-                    network.send_req_ignore_reply(request, bad_peer);
-                });
-            }
-            NetworkEvent::FlaggedAsBadNode { flagged_by } => {
-                event_header = "FlaggedAsBadNode";
-                self.record_metrics(Marker::FlaggedAsBadNode(&flagged_by));
             }
             NetworkEvent::NewListenAddr(_) => {
                 event_header = "NewListenAddr";
@@ -834,39 +845,13 @@ impl Node {
         }
     }
 
-    #[cfg(not(feature = "open-metrics"))]
-    fn try_forward_balance(network: Network, forward_reason: String) -> Result<()> {
-        if let Err(err) = Self::try_forward_balance_inner(network, forward_reason) {
-            error!("Error while trying to forward balance: {err:?}");
-            return Err(err);
-        }
-        Ok(())
-    }
-
-    #[cfg(feature = "open-metrics")]
+    /// Forward received rewards to another address
     fn try_forward_balance(
         network: Network,
         forward_reason: String,
-        forwarded_balance_metric: Option<Gauge>,
+        #[cfg(feature = "open-metrics")] forwarded_balance_metric: Option<Gauge>,
+        #[cfg(feature = "open-metrics")] current_reward_wallet_balance: Option<Gauge>,
     ) -> Result<()> {
-        match Self::try_forward_balance_inner(network, forward_reason) {
-            Ok(cumulative_forwarded_amount) => {
-                if let Some(forwarded_balance_metric) = forwarded_balance_metric {
-                    let _ = forwarded_balance_metric.set(cumulative_forwarded_amount as i64);
-                }
-            }
-            Err(err) => {
-                error!("Error while trying to forward balance: {err:?}");
-                return Err(err);
-            }
-        };
-
-        Ok(())
-    }
-
-    /// Forward received rewards to another address
-    /// Returns the cumulative amount forwarded
-    fn try_forward_balance_inner(network: Network, forward_reason: String) -> Result<u64> {
         let mut spend_requests = vec![];
         {
             // load wallet
@@ -945,7 +930,20 @@ impl Node {
         debug!("Updating forwarded balance to {updated_balance}");
         write_forwarded_balance_value(&balance_file_path, updated_balance)?;
 
-        Ok(updated_balance)
+        #[cfg(feature = "open-metrics")]
+        {
+            if let Some(forwarded_balance_metric) = forwarded_balance_metric {
+                let _ = forwarded_balance_metric.set(updated_balance as i64);
+            }
+
+            let wallet = HotWallet::load_from(network.root_dir_path())?;
+            let balance = wallet.balance();
+            if let Some(current_reward_wallet_balance) = current_reward_wallet_balance {
+                let _ = current_reward_wallet_balance.set(balance.as_nano() as i64);
+            }
+        }
+
+        Ok(())
     }
 }
 
