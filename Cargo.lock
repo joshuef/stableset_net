@@ -3750,6 +3750,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "walkdir",
  "xor_name",
 ]
 
