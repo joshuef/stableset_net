@@ -37,6 +37,11 @@ pub enum Error {
     #[error("The Register was already created by another owner: {0:?}")]
     RegisterAlreadyClaimed(bls::PublicKey),
 
+    // ---------- Scratchpad errors
+    /// The provided String can't be deserialized as a RegisterAddress
+    #[error("Failed to deserialize hex ScratchpadAddress")]
+    ScratchpadHexDeserializeFailed,
+
     // ---------- payment errors
     #[error("There was an error getting the storecost from kademlia store")]
     GetStoreCostFailed,
