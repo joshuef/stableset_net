@@ -31,6 +31,8 @@ pub enum PutError {
     SelfEncryption(#[from] crate::self_encryption::Error),
     #[error("Error serializing data.")]
     Serialization,
+    #[error("Error getting AccountPacket XorName data.")]
+    AccountPacketXorName,
     #[error("A network error occurred.")]
     Network(#[from] NetworkError),
     #[error("A wallet error occurred.")]

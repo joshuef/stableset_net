@@ -53,15 +53,23 @@ impl Client {
         }
 
         let root = Root { map };
-        let root_serialized = rmp_serde::to_vec(&root).expect("TODO");
+        let root_serialized = Bytes::from(rmp_serde::to_vec(&root).expect("TODO"));
 
-        let xor_name = self.put(Bytes::from(root_serialized), wallet).await?;
+        self.write_bytes_to_account_packet_if_defined(root_serialized.clone(), wallet)
+            .await?;
+
+        let xor_name = self.put(root_serialized, wallet).await?;
 
         Ok((root, xor_name))
     }
 
     pub async fn fetch_root(&mut self, address: XorName) -> Result<Root, UploadError> {
         let data = self.get(address).await?;
+
+        Ok(Self::deserialise_root(data)?)
+    }
+
+    pub fn deserialise_root(data: Bytes) -> Result<Root, UploadError> {
         let root: Root = rmp_serde::from_slice(&data[..]).expect("TODO");
 
         Ok(root)

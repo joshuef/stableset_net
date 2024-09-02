@@ -1,5 +1,6 @@
 use std::{collections::HashSet, time::Duration};
 
+use bls::SecretKey;
 use libp2p::{identity::Keypair, Multiaddr};
 use sn_client::networking::{
     multiaddr_is_global, version::IDENTIFY_PROTOCOL_STR, Network, NetworkBuilder, NetworkEvent,
@@ -7,6 +8,7 @@ use sn_client::networking::{
 use sn_protocol::CLOSE_GROUP_SIZE;
 use tokio::{sync::mpsc::Receiver, time::interval};
 
+mod account;
 mod data;
 mod files;
 mod registers;
@@ -18,6 +20,7 @@ const CONNECT_TIMEOUT_SECS: u64 = 20;
 #[derive(Clone)]
 pub struct Client {
     pub(crate) network: Network,
+    account_secret_key: Option<SecretKey>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -56,7 +59,10 @@ impl Client {
 
         receiver.await.expect("sender should not close")?;
 
-        Ok(Self { network })
+        Ok(Self {
+            network,
+            account_secret_key: None,
+        })
     }
 }
 
