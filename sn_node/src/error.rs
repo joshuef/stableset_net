@@ -39,6 +39,9 @@ pub enum Error {
     #[error("Overflow occurred while adding values")]
     NumericOverflow,
 
+    #[error("Could not obtain data dir")]
+    CouldNotObtainDataDir,
+
     // ---------- Record Errors
     #[error("Record was not stored as no payment supplied: {0:?}")]
     InvalidPutWithoutPayment(PrettyPrintRecordKey<'static>),

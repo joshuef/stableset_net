@@ -17,9 +17,9 @@ use libp2p::{identity::Keypair, PeerId};
 #[cfg(feature = "metrics")]
 use sn_logging::metrics::init_metrics;
 use sn_logging::{Level, LogFormat, LogOutputDest, ReloadHandle};
-use sn_node::{Marker, NodeBuilder, NodeEvent, NodeEventsReceiver};
+use sn_node::{get_safenode_root_dir, Marker, NodeBuilder, NodeEvent, NodeEventsReceiver};
 use sn_peers_acquisition::PeersArgs;
-use sn_protocol::{node::get_safenode_root_dir, node_rpc::NodeCtrl};
+use sn_protocol::node_rpc::NodeCtrl;
 use std::{
     env,
     io::Write,

@@ -13,8 +13,6 @@ extern crate tracing;
 pub mod error;
 /// Messages types
 pub mod messages;
-/// Helpers for safenode
-pub mod node;
 /// RPC commands to node
 pub mod node_rpc;
 /// Storage types for spends, chunks and registers.

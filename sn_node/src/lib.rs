@@ -54,6 +54,17 @@ use std::{
     path::PathBuf,
 };
 
+/// Get the default safenode root dir for the provided PeerId
+pub fn get_safenode_root_dir(peer_id: PeerId) -> Result<PathBuf> {
+    let dir = dirs_next::data_dir()
+        .ok_or_else(|| Error::CouldNotObtainDataDir)?
+        .join("safe")
+        .join("node")
+        .join(peer_id.to_string());
+
+    Ok(dir)
+}
+
 /// Once a node is started and running, the user obtains
 /// a `NodeRunning` object which can be used to interact with it.
 #[derive(Clone)]
