@@ -63,6 +63,7 @@ use std::{
     collections::{btree_map::Entry, BTreeMap, HashMap, HashSet, VecDeque},
     fmt::Debug,
     net::SocketAddr,
+    num::NonZero,
     path::PathBuf,
 };
 use tokio::sync::{mpsc, oneshot};
@@ -352,6 +353,7 @@ impl NetworkBuilder {
             .disjoint_query_paths(true)
             // Records never expire
             .set_record_ttl(None)
+            .set_replication_factor(NonZero::new(5).unwrap_or(K_VALUE))
             // Emit PUT events for validation prior to insertion into the RecordStore.
             // This is no longer needed as the record_storage::put now can carry out validation.
             // .set_record_filtering(KademliaStoreInserts::FilterBoth)
