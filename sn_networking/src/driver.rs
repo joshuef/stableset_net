@@ -858,11 +858,12 @@ impl SwarmDriver {
         let mapped: Vec<_> = sorted_distances.iter().map(|d| d.ilog2()).collect();
         info!("Sorted distances: {:?}", mapped);
 
-        let farthest_peer_to_check = self
-            .get_all_local_peers_excluding_self()
-            .len()
-            .checked_div(3 * CLOSE_GROUP_SIZE)
-            .unwrap_or(1);
+        let farthest_peer_to_check = 1;
+        // self
+        // .get_all_local_peers_excluding_self()
+        // .len()
+        // .checked_div(5 * CLOSE_GROUP_SIZE)
+        // .unwrap_or(1);
 
         info!("Farthest peer we'll check: {:?}", farthest_peer_to_check);
 
