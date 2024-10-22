@@ -18,7 +18,7 @@ pub mod local;
 pub mod rpc;
 pub mod rpc_client;
 
-pub const DEFAULT_NODE_STARTUP_CONNECTION_TIMEOUT_S: u64 = 300;
+pub const DEFAULT_NODE_STARTUP_CONNECTION_TIMEOUT_S: u64 = 600;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum VerbosityLevel {
