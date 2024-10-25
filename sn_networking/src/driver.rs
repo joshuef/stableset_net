@@ -134,6 +134,9 @@ const KAD_QUERY_TIMEOUT_S: Duration = Duration::from_secs(10);
 /// Periodic bootstrap interval
 const KAD_PERIODIC_BOOTSTRAP_INTERVAL_S: Duration = Duration::from_secs(180 * 60);
 
+/// Identify interval (default is 5 mnins)
+const IDENTIFY_PERIODIC_INTERVAL_S: Duration = Duration::from_secs(180 * 60);
+
 // Init during compilation, instead of runtime error that should never happen
 // Option<T>::expect will be stabilised as const in the future (https://github.com/rust-lang/rust/issues/67441)
 const REPLICATION_FACTOR: NonZeroUsize = match NonZeroUsize::new(CLOSE_GROUP_SIZE) {
@@ -623,6 +626,7 @@ impl NetworkBuilder {
         let identify = {
             let mut cfg =
                 libp2p::identify::Config::new(identify_protocol_str, self.keypair.public())
+                    .with_interval(IDENTIFY_PERIODIC_INTERVAL_S)
                     .with_agent_version(identify_version);
             // Enlength the identify interval from default 5 mins to 1 hour.
             cfg.interval = RESEND_IDENTIFY_INVERVAL;
