@@ -62,7 +62,7 @@ const CHUNK_PROOF_VERIFY_RETRY_INTERVAL: Duration = Duration::from_secs(15);
 const UPTIME_METRICS_UPDATE_INTERVAL: Duration = Duration::from_secs(10);
 
 /// Interval to clean up unrelevant records
-const UNRELEVANT_RECORDS_CLEANUP_INTERVAL: Duration = Duration::from_secs(3600);
+const UNRELEVANT_RECORDS_CLEANUP_INTERVAL: Duration = Duration::from_secs(10);
 
 /// Helper to build and run a Node
 pub struct NodeBuilder {
