@@ -525,9 +525,7 @@ impl Network {
     ) -> Result<PayeeQuote> {
         // The requirement of having at least CLOSE_GROUP_SIZE
         // close nodes will be checked internally automatically.
-        let mut close_nodes = self
-            .client_get_all_close_peers_in_range_or_close_group(&record_address)
-            .await?;
+        let mut close_nodes = self.get_all_local_peers_excluding_self().await?;
         // Filter out results from the ignored peers.
         close_nodes.retain(|peer_id| !ignore_peers.contains(peer_id));
 
